@@ -2110,7 +2110,11 @@ void UI_DisplayMain(void)
             #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
                 const char dir_list[][2] = {"", "+", "-", "D"};
 
-                if(gTxVfo->TX_OFFSET_FREQUENCY_DIRECTION != 0 && gTxVfo->pTX == &gTxVfo->freq_config_RX && !vfoInfo->FrequencyReverse)
+                if(gRemoveOffset &&
+                   vfoInfo == gTxVfo &&
+                   gTxVfo->TX_OFFSET_FREQUENCY_DIRECTION != 0 &&
+                   gTxVfo->pTX == &gTxVfo->freq_config_RX &&
+                   !vfoInfo->FrequencyReverse)
                 {
                     i = 3;
                 }
