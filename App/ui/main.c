@@ -140,7 +140,7 @@ static void UI_MAIN_DrawBeamLine(void)
 }
 #endif
 
-const char *VfoStateStr[] = {
+const char *const VfoStateStr[] = {
        [VFO_STATE_NORMAL]="",
        [VFO_STATE_BUSY]="BUSY",
        [VFO_STATE_BAT_LOW]="BAT LOW",

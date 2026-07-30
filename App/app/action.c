@@ -61,7 +61,7 @@ inline static void ACTION_1750() { ACTION_AlarmOr1750(true); };
 
 inline static void ACTION_ScanRestart() { ACTION_Scan(true); };
 
-void (*action_opt_table[])(void) = {
+void (*const action_opt_table[])(void) = {
     [ACTION_OPT_NONE] = &FUNCTION_NOP,
     [ACTION_OPT_POWER] = &ACTION_Power,
     [ACTION_OPT_MONITOR] = &ACTION_Monitor,
