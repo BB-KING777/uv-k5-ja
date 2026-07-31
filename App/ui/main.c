@@ -1776,8 +1776,6 @@ void UI_DisplayMain(void)
 #endif
 
                 #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
-                {
-                    }
                 }
                 #endif
 
