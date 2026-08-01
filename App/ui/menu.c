@@ -525,6 +525,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
     #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
         {"RF LOG",          ACTION_OPT_RXTX_LOG},
     #endif
+    #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
+        {"FOX HUNT",        ACTION_OPT_FOXHUNT},
+    #endif
 #endif
 };
 
