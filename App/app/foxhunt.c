@@ -365,6 +365,17 @@ static void FOXHUNT_IdleHousekeeping(void)
         return;
     gNextTimeslice_500ms = false;
 
+    // This modal loop bypasses the foreground scheduler that normally samples the
+    // battery, which would otherwise freeze gBatteryDisplayLevel for the whole
+    // session. Refresh it here — every caller of this function has the PA off (the
+    // hunt loop, and the beacon idle gap, never a burst), so the reading is not
+    // pulled down by TX load — keeping the status icon live and letting the
+    // beacon's battery gate react to a pack draining under a long run.
+    BOARD_ADC_GetBatteryInfo(&gBatteryVoltages[gBatteryVoltageIndex++], &gBatteryCurrent);
+    if (gBatteryVoltageIndex > 3)
+        gBatteryVoltageIndex = 0;
+    BATTERY_GetReadings(false);
+
     // Backlight timeout: switch it off when the countdown expires (both modes).
     if (gBacklightCountdown_500ms > 0
         && gEeprom.BACKLIGHT_TIME < 61
@@ -450,7 +461,57 @@ static void FOXHUNT_EnterHunt(void)
     audioTick  = 0;
 }
 
-// Enter the beacon (fox) sub-mode and transmit at once for instant feedback.
+// Evaluate the TX gates for the beacon's TX VFO in the same precedence order as
+// RADIO_PrepareTX (F LOCK / per-VFO TX LOCK, then battery, then modulation) and
+// return the matching VfoState_t. VFO_STATE_NORMAL means the burst is clear to
+// transmit. Reusing the radio's own states keeps the on-screen wording identical
+// to the main display (VfoStateStr).
+static VfoState_t FOXHUNT_TxState(void)
+{
+    if (TX_freq_check(gTxVfo->pTX->Frequency) != 0 && gTxVfo->TX_LOCK)
+        return VFO_STATE_TX_DISABLE;
+    if (gBatteryDisplayLevel == 0)
+        return VFO_STATE_BAT_LOW;
+    if (gBatteryDisplayLevel > 6)
+        return VFO_STATE_VOLTAGE_HIGH;
+#ifndef ENABLE_TX_WHEN_AM
+    if (gTxVfo->Modulation != MODULATION_FM)
+        return VFO_STATE_TX_DISABLE;
+#endif
+    return VFO_STATE_NORMAL;
+}
+
+// Refuse feedback shown when a burst is barred: reuse the beacon screen layout and
+// the radio's own state label (VfoStateStr, e.g. "TX DISABLE" / "BAT LOW" / "VOLT
+// HIGH"), same font as the main screen, for a beat; the caller then falls back to
+// the hunt. The RX front-end and audio path are left untouched so the hunt keeps
+// reading cleanly.
+static void FOXHUNT_TxDeniedNotice(VfoState_t state)
+{
+    UI_DisplayClear();
+    UI_StatusClear();
+
+    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 28);
+    FOXHUNT_DrawStatusBattery();
+
+    // Centred, gFontBig — same wording and font as the main screen's VFO state,
+    // on line 1 so it sits exactly where the beacon's "TX" / "IDLE" text appears.
+    UI_PrintString(VfoStateStr[state], 0, 127, 1, 8);
+
+    // Bottom-right: the barred TX frequency, so it is clear what was refused.
+    sprintf(str, "%u.%05u", gTxVfo->pTX->Frequency / 100000, gTxVfo->pTX->Frequency % 100000);
+    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
+
+    ST7565_BlitStatusLine();
+    ST7565_BlitFullScreen();
+
+    // Hold the notice ~1 s while keeping the backlight fade alive.
+    for (uint8_t i = 0; i < 20; i++)
+        FOXHUNT_TickDelay();
+}
+
+// Enter the beacon (fox) sub-mode. The TX gates are enforced per burst in
+// FOXHUNT_BeaconTick (which runs immediately), so entry just arms the state.
 static void FOXHUNT_EnterBeacon(void)
 {
     foxBeacon     = true;
@@ -610,6 +671,20 @@ static void FOXHUNT_BeaconKeys(void)
 static void FOXHUNT_BeaconTick(void)
 {
     if (beaconPhaseTx) {
+        // Re-assert the TX gates before every burst (RADIO_PrepareTX parity). F
+        // LOCK / TX LOCK and modulation are fixed for the session, but the battery
+        // is re-sampled over the idle gaps (FOXHUNT_IdleHousekeeping), so a beacon
+        // left running stops keying up once the pack falls low or over-voltage
+        // instead of transmitting blind. Refuse, notify, and drop back to hunt.
+        VfoState_t state = FOXHUNT_TxState();
+        if (state != VFO_STATE_NORMAL) {
+            FOXHUNT_TxDeniedNotice(state);
+            foxBeacon     = false;
+            beaconPhaseTx = false;
+            FOXHUNT_EnterHunt();
+            return;
+        }
+
         FOXHUNT_BeaconDraw(true, 0);
         ST7565_BlitStatusLine();
         ST7565_BlitFullScreen();
