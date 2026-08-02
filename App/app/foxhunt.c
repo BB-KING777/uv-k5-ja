@@ -88,6 +88,7 @@
 #define FOXHUNT_BEACON_IDLE_MAX  60             // longest idle gap (s)
 #define FOXHUNT_BEACON_IDLE_STEP 5              // idle adjust step (s)
 #define FOXHUNT_CALLSIGN_ADDR    0x00A0C8u      // boot message line 1 in SPI flash
+#define FOXHUNT_CALLSIGN_MAX     12             // maximum boot-message characters used by the beacon
 
 // Attenuator via the BK4829 PGA (REG_13 bits 0..2) — the last gain stage before
 // the RSSI detector, so it scales the reading linearly. Reducing the early LNA
@@ -136,10 +137,12 @@ static uint8_t beaconIdle;        // configured silence between IDs (s)
 static uint8_t beaconIdleLeft;    // seconds left in the current silence
 static uint8_t beaconIdleTick;    // tick counter that clocks the idle countdown
 static char    beaconMsg[24];     // CW message, e.g. "F4HWN BEACON"
+static uint8_t beaconCharsSent;   // characters completed in the current burst
 
 static void FOXHUNT_EnterHunt(void);
 static void FOXHUNT_EnterBeacon(void);
 static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft);
+static void FOXHUNT_UpdateBeaconProgress(uint8_t visibleChars);
 static void FOXHUNT_SaveConfig(void);
 
 // Read the calibrated signal level of the current RX VFO, in dBm.
@@ -699,12 +702,16 @@ static uint8_t FOXHUNT_MorseByte(char c)
 
 // Send one character as modulated CW: key the running TX tone on per element,
 // muting the modulation (carrier stays up) between them. Returns true if aborted.
-static bool FOXHUNT_MorseChar(char c)
+static bool FOXHUNT_MorseChar(char c, uint8_t visibleChars)
 {
     uint8_t code = FOXHUNT_MorseByte(c);
 
-    if (code == 0)                              // space / unknown -> word gap
-        return FOXHUNT_TxDelay(FOXHUNT_MORSE_UNIT_MS * 4);
+    if (code == 0) {                            // space / unknown -> word gap
+        if (FOXHUNT_TxDelay(FOXHUNT_MORSE_UNIT_MS * 4))
+            return true;
+        FOXHUNT_UpdateBeaconProgress(visibleChars);
+        return false;
+    }
 
     uint8_t bit = 0x80;
     while (!(code & bit)) bit >>= 1;            // skip to the sentinel bit
@@ -716,6 +723,12 @@ static bool FOXHUNT_MorseChar(char c)
         BK4819_EnterTxMute();
         if (FOXHUNT_TxDelay(FOXHUNT_MORSE_UNIT_MS)) return true;         // intra gap
     }
+
+    // Reveal the character once all its CW elements have been transmitted. The
+    // remaining two units keep the completed character visible during the rest
+    // of the standard three-unit inter-character gap.
+    FOXHUNT_UpdateBeaconProgress(visibleChars);
+
     // Inter-character gap is 3 units; one already elapsed after the last element.
     return FOXHUNT_TxDelay(FOXHUNT_MORSE_UNIT_MS * 2);
 }
@@ -732,7 +745,7 @@ static void FOXHUNT_BeaconTransmit(void)
 
     bool stop = false;
     for (uint8_t i = 0; !stop && beaconMsg[i]; i++)
-        stop = FOXHUNT_MorseChar(beaconMsg[i]);
+        stop = FOXHUNT_MorseChar(beaconMsg[i], i + 1u);
 
     // Key down: mute, drop the PA and restore RX for the silent gap. If the burst
     // was interrupted, FOXHUNT_TxDelay already set the target mode (quit or hunt).
@@ -741,14 +754,72 @@ static void FOXHUNT_BeaconTransmit(void)
     RADIO_SetupRegisters(true);
 }
 
+// Draw the transmitted portion of "<call> BEACON" on two normal-font lines at
+// their final positions: the boot message first, then BEACON below it.
+static void FOXHUNT_DrawBeaconMessage(uint8_t visibleChars)
+{
+    static const char suffix[] = "BEACON";
+    const char *separator = strchr(beaconMsg, ' ');
+
+    if (separator == NULL) {
+        return;
+    }
+
+    const size_t callLen = (size_t)(separator - beaconMsg);
+    const size_t visibleCallLen = MIN((size_t)visibleChars, callLen);
+    char call[FOXHUNT_CALLSIGN_MAX + 1];
+    memcpy(call, beaconMsg, visibleCallLen);
+    call[visibleCallLen] = '\0';
+
+    const uint8_t callX = (uint8_t)((LCD_WIDTH - callLen * 8u) / 2u);
+    UI_PrintString(call, callX, 0, 2, 8);
+
+    if ((size_t)visibleChars > callLen + 1u) {
+        const size_t visibleSuffixLen = MIN((size_t)visibleChars - callLen - 1u,
+                                            sizeof(suffix) - 1u);
+        char visibleSuffix[sizeof(suffix)];
+        memcpy(visibleSuffix, suffix, visibleSuffixLen);
+        visibleSuffix[visibleSuffixLen] = '\0';
+        UI_PrintString(visibleSuffix,
+                       (uint8_t)((LCD_WIDTH - (sizeof(suffix) - 1u) * 8u) / 2u),
+                       0, 4, 8);
+    }
+}
+
+// Update only the line pair whose latest character changed so screen refreshes
+// do not lengthen the Morse timing more than necessary.
+static void FOXHUNT_UpdateBeaconProgress(uint8_t visibleChars)
+{
+    const char *separator = strchr(beaconMsg, ' ');
+    const size_t callLen = separator != NULL ? (size_t)(separator - beaconMsg) : 0u;
+
+    beaconCharsSent = visibleChars;
+
+    if ((size_t)visibleChars <= callLen) {
+        memset(gFrameBuffer[2], 0, sizeof(gFrameBuffer[2]));
+        memset(gFrameBuffer[3], 0, sizeof(gFrameBuffer[3]));
+        FOXHUNT_DrawBeaconMessage(beaconCharsSent);
+        ST7565_BlitLine(2);
+        ST7565_BlitLine(3);
+    } else if ((size_t)visibleChars > callLen + 1u) {
+        memset(gFrameBuffer[4], 0, sizeof(gFrameBuffer[4]));
+        memset(gFrameBuffer[5], 0, sizeof(gFrameBuffer[5]));
+        FOXHUNT_DrawBeaconMessage(beaconCharsSent);
+        ST7565_BlitLine(4);
+        ST7565_BlitLine(5);
+    }
+}
+
 static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft)
 {
     // Frame (clear + BEACON tag + battery + TX frequency).
     FOXHUNT_BeaconChrome();
 
-    // Centre, on two lines: the state, and below it the idle countdown (idle only).
+    // The TX layout starts one line higher so the bottom information remains
+    // visible below the two progressively completed message lines.
     if (txNow) {
-        UI_PrintString("TX", 0, 127, 1, 10);
+        UI_PrintString("TX", 0, 127, 0, 10);
+        FOXHUNT_DrawBeaconMessage(beaconCharsSent);
     } else {
         UI_PrintString("IDLE", 0, 127, 1, 10);
         sprintf(str, "%02us", idleLeft);
@@ -807,6 +878,7 @@ static void FOXHUNT_BeaconTick(void)
             return;
         }
 
+        beaconCharsSent = 0;
         FOXHUNT_BeaconDraw(true, 0);
         ST7565_BlitStatusLine();
         ST7565_BlitFullScreen();
@@ -935,11 +1007,11 @@ void APP_RunFoxHunt(void)
     // Build the CW message "<call> BEACON": the callsign is the boot message
     // (line 1), sanitised to what Morse can send; empty/erased falls back to FOX.
     {
-        char call[16];
+        char call[FOXHUNT_CALLSIGN_MAX + 1];
         uint8_t n = 0;
-        PY25Q16_ReadBuffer(FOXHUNT_CALLSIGN_ADDR, call, sizeof(call) - 1);
-        call[sizeof(call) - 1] = '\0';
-        for (uint8_t i = 0; i < sizeof(call) - 1; i++) {
+        PY25Q16_ReadBuffer(FOXHUNT_CALLSIGN_ADDR, call, FOXHUNT_CALLSIGN_MAX);
+        call[FOXHUNT_CALLSIGN_MAX] = '\0';
+        for (uint8_t i = 0; i < FOXHUNT_CALLSIGN_MAX; i++) {
             char c = call[i];
             if (c == '\0' || (uint8_t)c == 0xFF)
                 break;
