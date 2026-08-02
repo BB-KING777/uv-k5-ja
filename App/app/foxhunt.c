@@ -40,6 +40,23 @@
 #define FOXHUNT_TICK_MS      50
 #define FOXHUNT_TREND_TICKS  20   // compare the level roughly once per second
 
+// Signal-history graph: a full-width scrolling trace of the level over the last
+// seconds, on the same 13-level S scale as the staircase (FOXHUNT_FillCount). It is
+// an alternate main gauge, toggled with the 2 key. The reading is EMA-smoothed each
+// tick; one sample is stored every FOXHUNT_HIST_DECIM ticks, so the visible window
+// spans LEN * DECIM * TICK_MS (120 * 3 * 50 ms = 18 s).
+#define FOXHUNT_HIST_LEN    120  // samples kept (also the graph width in px)
+#define FOXHUNT_HIST_DECIM  3    // ticks between stored samples (3 * 50 ms = 150 ms)
+#define FOXHUNT_GRAPH_X0    4    // left column of the graph (frame-buffer x)
+#define FOXHUNT_GRAPH_TOP   27   // top row (level 13, S9+40)
+#define FOXHUNT_GRAPH_BOT   45   // baseline (axis) row
+#define FOXHUNT_GRAPH_FLOOR 2    // gap between the level-0 line and the baseline, so
+                                 // the lowest reading never sits on the axis
+
+// Main-gauge mode cycled by the 2 key.
+#define FOXHUNT_GRAPH_BAR   0    // S-meter staircase (default)
+#define FOXHUNT_GRAPH_HIST  1    // full-width signal history
+
 // Geiger audio: the blip RATE tracks the signal level (faster = closer), the
 // pitch rises too as a secondary cue. Below the silence floor, no blips at all.
 #define FOXHUNT_AUDIO_SETTLE_MS 60  // audio amplifier warm-up after enabling the speaker
@@ -80,6 +97,7 @@ static KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
 
 static bool    foxRunning;
 static uint8_t foxAudioMode;
+static uint8_t foxGraphMode;   // FOXHUNT_GRAPH_BAR / _HIST, cycled by the 2 key
 static uint8_t attStep;
 static int16_t curDbm;
 static int16_t peakDbm;
@@ -87,6 +105,12 @@ static int16_t trendRef;
 static int16_t trendDelta;
 static uint8_t trendTick;
 static uint8_t audioTick;
+
+// Signal-history ring: FOXHUNT_FillCount levels (0..13), oldest at histHead.
+static uint8_t histBuf[FOXHUNT_HIST_LEN];
+static uint8_t histHead;    // index of the oldest sample (next write slot)
+static uint8_t histTick;    // decimation counter (0..FOXHUNT_HIST_DECIM-1)
+static int16_t histEma;     // EMA-smoothed level feed, dBm in 1/8 units (x8 fixed)
 
 static char str[16];
 
@@ -112,6 +136,7 @@ static char    beaconMsg[24];     // CW message, e.g. "F4HWN BEACON"
 static void FOXHUNT_EnterHunt(void);
 static void FOXHUNT_EnterBeacon(void);
 static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft);
+static void FOXHUNT_SaveConfig(void);
 
 // Read the calibrated signal level of the current RX VFO, in dBm.
 static int16_t FOXHUNT_ReadDbm(void)
@@ -231,6 +256,63 @@ static void FOXHUNT_DrawBar(void)
                       FOXHUNT_SEG_BOTTOM + 2, true);
 }
 
+// Push one EMA-smoothed reading into the signal history, decimated so the visible
+// window spans several seconds. Called once per hunt tick.
+static void FOXHUNT_HistSample(void)
+{
+    // First-order IIR (EMA) on the raw dBm, in x8 fixed point so the /4 step does
+    // not stall a few dB short of the input. Tau ~4 ticks (~200 ms): kills the RSSI
+    // snow while staying responsive.
+    histEma += ((int16_t)curDbm * 8 - histEma) / 4;
+
+    if (++histTick < FOXHUNT_HIST_DECIM)
+        return;
+    histTick = 0;
+
+    histBuf[histHead] = FOXHUNT_FillCount((int16_t)(histEma / 8));
+    histHead = (uint8_t)((histHead + 1) % FOXHUNT_HIST_LEN);
+}
+
+// Draw the full-width signal-history graph, spectrum-style: a solid crest contour
+// over a checkerboard-filled body, on the 13-level S scale. Oldest sample on the
+// left, newest ("now") on the right. Replaces the staircase when the 2 key selects
+// it. The level-0 line sits FOXHUNT_GRAPH_FLOOR px above the baseline so the lowest
+// reading never touches the axis.
+static void FOXHUNT_DrawHist(void)
+{
+    const uint8_t floorY = FOXHUNT_GRAPH_BOT - FOXHUNT_GRAPH_FLOOR;   // level-0 line
+    const uint8_t span   = floorY - FOXHUNT_GRAPH_TOP;                // px for 13 levels
+
+    // Baseline (axis) across the full width, below the level-0 line.
+    UI_DrawLineBuffer(gFrameBuffer, FOXHUNT_GRAPH_X0, FOXHUNT_GRAPH_BOT,
+                      FOXHUNT_GRAPH_X0 + FOXHUNT_HIST_LEN - 1, FOXHUNT_GRAPH_BOT, true);
+
+    uint8_t prevY = 0;
+    for (uint8_t c = 0; c < FOXHUNT_HIST_LEN; c++) {
+        uint8_t lvl = histBuf[(histHead + c) % FOXHUNT_HIST_LEN];   // oldest -> newest
+        if (lvl > FOXHUNT_SEG_COUNT)
+            lvl = FOXHUNT_SEG_COUNT;
+        uint8_t x = FOXHUNT_GRAPH_X0 + c;
+        uint8_t y = (uint8_t)(floorY - (lvl * span) / FOXHUNT_SEG_COUNT);   // crest top
+
+        // Checkerboard body from just under the crest down to the level-0 line
+        // (same pattern as the spectrum: ((x + y) & 1) == 0).
+        for (uint8_t yy = y + 1; yy <= floorY; yy++)
+            if (((x + yy) & 1) == 0)
+                UI_DrawLineBuffer(gFrameBuffer, x, yy, x, yy, true);
+
+        // Solid crest, bridged to the previous sample so it reads as one contour.
+        if (c == 0) {
+            UI_DrawLineBuffer(gFrameBuffer, x, y, x, y, true);
+        } else {
+            uint8_t ylo = (y < prevY) ? y : prevY;
+            uint8_t yhi = (y < prevY) ? prevY : y;
+            UI_DrawLineBuffer(gFrameBuffer, x, ylo, x, yhi, true);
+        }
+        prevY = y;
+    }
+}
+
 // Battery icon plus the optional voltage/percentage text, top-right of the status
 // line — shared by the hunt and beacon screens.
 static void FOXHUNT_DrawStatusBattery(void)
@@ -264,6 +346,14 @@ static void FOXHUNT_Draw(void)
     // Battery (icon + optional percentage/voltage) top-right, as on the main screens.
     FOXHUNT_DrawStatusBattery();
 
+    // Gauge-mode icon (2 key), between the label and the audio icon: ascending
+    // bars for the S-meter staircase, a sine wave for the signal history. Each
+    // bitmap has its own width, so copy its own size.
+    if (foxGraphMode == FOXHUNT_GRAPH_HIST)
+        memcpy(gStatusLine + 38, BITMAP_FoxHuntGraph, sizeof(BITMAP_FoxHuntGraph));
+    else
+        memcpy(gStatusLine + 38, BITMAP_FoxHuntBars, sizeof(BITMAP_FoxHuntBars));
+
     // Audio state icon between the label and the battery: speaker for beep,
     // headphones for station audio, nothing when silent.
     if (foxAudioMode == FOXHUNT_AUDIO_BEEP)
@@ -292,21 +382,27 @@ static void FOXHUNT_Draw(void)
         UI_PrintStringSmallNormal(str, 127 - 3 * 7 - 2 - strlen(str) * 7, 0, 1);
     }
 
-    // Context line: peak hold and S-meter as small inverse labels (scan-list tag
-    // style, 4 px/char), PK anchored left and S anchored right.
+    // Context line: peak hold (left) and S-meter (right) as small inverse labels
+    // (scan-list tag style, 4 px/char).
     sprintf(str, "PK %d", peakDbm);
     GUI_DisplaySmallestInverse(str, 4, 2, false, true, 4 + strlen(str) * 4);
     FOXHUNT_BuildS(sMeter, curDbm);
     GUI_DisplaySmallestInverse(sMeter, 126 - strlen(sMeter) * 4, 2, false, true, 125);
 
-    // Segmented S-meter staircase.
-    FOXHUNT_DrawBar();
+    // Main gauge, toggled by the 2 key: the S-meter staircase, or a full-width
+    // scrolling history of the level over the last seconds (same 13-level S scale).
+    if (foxGraphMode == FOXHUNT_GRAPH_HIST) {
+        FOXHUNT_DrawHist();
+    } else {
+        // Segmented S-meter staircase.
+        FOXHUNT_DrawBar();
 
-    // Scale under the gauge, aligned with segments 1 / 5 / 9 / 13.
-    GUI_DisplaySmallest("S1",    6, 41, false, true);
-    GUI_DisplaySmallest("S5",   42, 41, false, true);
-    GUI_DisplaySmallest("S9",   78, 41, false, true);
-    GUI_DisplaySmallest("+40", 110, 41, false, true);
+        // Scale under the gauge, aligned with segments 1 / 5 / 9 / 13.
+        GUI_DisplaySmallest("S1",    6, 41, false, true);
+        GUI_DisplaySmallest("S5",   42, 41, false, true);
+        GUI_DisplaySmallest("S9",   78, 41, false, true);
+        GUI_DisplaySmallest("+40", 110, 41, false, true);
+    }
 
     // Attenuator as an inverse label (left), tuned frequency (right).
     sprintf(str, "ATT %ddB", FOXHUNT_ATT_DB[attStep]);
@@ -376,6 +472,10 @@ static void FOXHUNT_IdleHousekeeping(void)
         gBatteryVoltageIndex = 0;
     BATTERY_GetReadings(false);
 
+    // Persist any changed setting within ~0.5 s, so it survives a power-off (not
+    // just a clean EXIT). No-op when nothing changed.
+    FOXHUNT_SaveConfig();
+
     // Backlight timeout: switch it off when the countdown expires (both modes).
     if (gBacklightCountdown_500ms > 0
         && gEeprom.BACKLIGHT_TIME < 61
@@ -432,6 +532,10 @@ static void FOXHUNT_HandleKeys(void)
             if (foxAudioMode == FOXHUNT_AUDIO_BEEP)
                 audioTick = FOXHUNT_RATE_SLOW_TICKS;   // blip promptly
             break;
+        case KEY_2:
+            // Toggle the main gauge: S-meter staircase <-> full-width history.
+            foxGraphMode ^= 1;
+            break;
         case KEY_SIDE1:
         case KEY_SIDE2:
             // Same shortcut that opened Fox Hunt now toggles to the beacon.
@@ -442,23 +546,35 @@ static void FOXHUNT_HandleKeys(void)
     }
 }
 
-// (Re)enter the hunt (RX) sub-mode: fixed front-end gain, attenuator re-applied,
-// audio silenced, peak/trend reset. Called at start-up and when leaving beacon.
+// (Re)enter the hunt (RX) sub-mode: fixed front-end gain, attenuator and audio mode
+// re-applied, peak/trend reset. Called at start-up and when leaving the beacon. The
+// audio mode is a hunt setting, so it is (re)applied here, not forced off — it must
+// survive a trip through the beacon.
 static void FOXHUNT_EnterHunt(void)
 {
-    foxBeacon    = false;
-    foxAudioMode = FOXHUNT_AUDIO_OFF;
-    AUDIO_AudioPathOff();
+    foxBeacon = false;
 
     BK4819_SetAGC(false);
     FOXHUNT_ApplyAtt();
+    FOXHUNT_SetAudio();          // (re)apply the current audio mode: off / beep / station
 
     curDbm     = FOXHUNT_ReadDbm();
     peakDbm    = curDbm;
     trendRef   = curDbm;
     trendDelta = 0;
     trendTick  = 0;
-    audioTick  = 0;
+    audioTick  = (foxAudioMode == FOXHUNT_AUDIO_BEEP) ? FOXHUNT_RATE_SLOW_TICKS : 0;
+
+    // Prime the signal history flat at the current level so the sparkline scrolls
+    // in from a sensible baseline (also applies on return from the beacon).
+    {
+        uint8_t lvl = FOXHUNT_FillCount(curDbm);
+        for (uint8_t i = 0; i < FOXHUNT_HIST_LEN; i++)
+            histBuf[i] = lvl;
+    }
+    histHead = 0;
+    histTick = 0;
+    histEma  = (int16_t)(curDbm * 8);
 }
 
 // Evaluate the TX gates for the beacon's TX VFO in the same precedence order as
@@ -515,8 +631,7 @@ static void FOXHUNT_TxDeniedNotice(VfoState_t state)
 static void FOXHUNT_EnterBeacon(void)
 {
     foxBeacon     = true;
-    foxAudioMode  = FOXHUNT_AUDIO_OFF;
-    AUDIO_AudioPathOff();
+    AUDIO_AudioPathOff();        // no RX audio while beaconing; foxAudioMode kept for the hunt
     gCurrentVfo   = gTxVfo;      // the VFO RADIO_SetTxParameters keys up
     beaconPhaseTx = true;
 }
@@ -734,6 +849,64 @@ static void FOXHUNT_BeaconTick(void)
     FOXHUNT_TickDelay();          // tick delay + smooth backlight fade
 }
 
+// --- Persistence (external flash) --------------------------------------------
+// Concatenated right after the VFO data in the VFO sector. NB: the 14 VFOs really
+// span 0x9000..0x90E0 (224 B); the old 0x90D6 mapping bound was 10 B short and
+// overlapped the last VFO (470 MHz VFO1 @ 0x90D0..0x90DF), so the config sits at
+// 0x90E0, just past the real end. Normal saves are read-modify-write (Append=false)
+// so they preserve these bytes, and the VFO mapping is extended to 0x90E5
+// (eeprom_compat.c) so aircopy clones them with the VFOs. A factory reset clears it.
+#define FOXHUNT_CFG_ADDR  0x0090E0u
+#define FOXHUNT_CFG_MAGIC 0xF4u    // tells a written config from erased flash (0xFF)
+
+// RAM mirror of the bytes last written to flash, so FOXHUNT_SaveConfig only touches
+// the flash when a value actually changed.
+static uint8_t foxCfgSaved[5];
+
+// Pack the live settings into the 5-byte on-flash layout.
+static void FOXHUNT_ConfigPack(uint8_t out[5])
+{
+    out[0] = FOXHUNT_CFG_MAGIC;
+    out[1] = attStep;
+    out[2] = foxGraphMode;
+    out[3] = foxAudioMode;
+    out[4] = beaconIdle;
+}
+
+// Restore persisted settings; erased/invalid flash leaves the defaults in place.
+static void FOXHUNT_LoadConfig(void)
+{
+    uint8_t cfg[5];
+    PY25Q16_ReadBuffer(FOXHUNT_CFG_ADDR, cfg, sizeof(cfg));
+
+    if (cfg[0] == FOXHUNT_CFG_MAGIC) {                    // valid, saved config
+        if (cfg[1] <= 3)                     attStep      = cfg[1];
+        if (cfg[2] <= FOXHUNT_GRAPH_HIST)    foxGraphMode = cfg[2];
+        if (cfg[3] <= FOXHUNT_AUDIO_STATION) foxAudioMode = cfg[3];
+        if (cfg[4] >= FOXHUNT_BEACON_IDLE_MIN && cfg[4] <= FOXHUNT_BEACON_IDLE_MAX
+            && (cfg[4] % FOXHUNT_BEACON_IDLE_STEP) == 0)
+            beaconIdle = cfg[4];
+    }
+
+    FOXHUNT_ConfigPack(foxCfgSaved);   // mirror the loaded (or default) state
+}
+
+// Write the settings to flash, but only when they changed since the last write.
+// Called on the 500 ms tick (so any change persists within ~0.5 s and survives a
+// power-off, not just a clean EXIT) and once more on leaving Fox Hunt. The RAM
+// compare avoids re-reading the 4 KB sector on every quiet tick.
+static void FOXHUNT_SaveConfig(void)
+{
+    uint8_t cfg[5];
+    FOXHUNT_ConfigPack(cfg);
+
+    if (memcmp(cfg, foxCfgSaved, sizeof(cfg)) == 0)
+        return;
+
+    PY25Q16_WriteBuffer(FOXHUNT_CFG_ADDR, cfg, sizeof(cfg), false);
+    memcpy(foxCfgSaved, cfg, sizeof(cfg));
+}
+
 void APP_RunFoxHunt(void)
 {
     // Finish any pending backlight fade, then start with the screen on and a full
@@ -774,9 +947,13 @@ void APP_RunFoxHunt(void)
         sprintf(beaconMsg, "%s BEACON", call);
     }
 
-    // Start in the hunt (RX) sub-mode.
-    attStep = 0;
-    FOXHUNT_EnterHunt();
+    // Start in the hunt (RX) sub-mode, S-meter staircase gauge by default, then
+    // restore any persisted settings (attenuator, gauge, audio, beacon idle).
+    attStep      = 0;
+    foxGraphMode = FOXHUNT_GRAPH_BAR;
+    foxAudioMode = FOXHUNT_AUDIO_OFF;
+    FOXHUNT_LoadConfig();   // may override att / gauge / audio / idle
+    FOXHUNT_EnterHunt();    // applies the restored attStep and audio mode
 
     // Prime the key state with whatever is held right now, so the side key that
     // launched Fox Hunt (still down on a long-press assignment) is not taken for
@@ -807,6 +984,8 @@ void APP_RunFoxHunt(void)
             trendTick  = 0;
         }
 
+        FOXHUNT_HistSample();   // feed the smoothed signal-history sparkline
+
         FOXHUNT_Draw();
 
         ST7565_BlitStatusLine();
@@ -834,6 +1013,10 @@ void APP_RunFoxHunt(void)
         FOXHUNT_IdleHousekeeping();   // backlight timeout / sleep
         FOXHUNT_TickDelay();          // tick delay + smooth backlight fade
     }
+
+    // Persist the session's settings so they survive a power cycle (covers EXIT
+    // and the sleep auto power-off, both of which just clear foxRunning).
+    FOXHUNT_SaveConfig();
 
     // Mute any pending tone, drop the PA (safety), then restore the normal VFO
     // selection and RX config.
