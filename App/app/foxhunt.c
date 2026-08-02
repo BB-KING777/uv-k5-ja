@@ -18,6 +18,10 @@
 
 #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
 
+#if defined(ENABLE_UART) || defined(ENABLE_USB)
+#include "app/uart.h"
+#endif
+
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
 #include "k5viewer.h"
 #endif
@@ -965,6 +969,9 @@ void APP_RunFoxHunt(void)
 
     foxRunning = true;
     while (foxRunning) {
+#if defined(ENABLE_UART) || defined(ENABLE_USB)
+        UART_ServiceCommands();
+#endif
         if (foxBeacon) {
             FOXHUNT_BeaconTick();
             continue;
