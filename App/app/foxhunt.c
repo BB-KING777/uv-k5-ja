@@ -331,6 +331,25 @@ static void FOXHUNT_DrawStatusBattery(void)
     }
 }
 
+// Right-aligned frequency on the bottom line (line 6), shared by the hunt and
+// beacon screens.
+static void FOXHUNT_DrawFreqBR(uint32_t freq)
+{
+    sprintf(str, "%u.%05u", freq / 100000, freq % 100000);
+    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
+}
+
+// Common beacon-screen frame: clear, the BEACON tag, the battery, and the TX
+// frequency. Shared by the beacon draw and the TX-denied notice.
+static void FOXHUNT_BeaconChrome(void)
+{
+    UI_DisplayClear();
+    UI_StatusClear();
+    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 28);
+    FOXHUNT_DrawStatusBattery();
+    FOXHUNT_DrawFreqBR(gTxVfo->pTX->Frequency);
+}
+
 static void FOXHUNT_Draw(void)
 {
     const uint8_t *trendIcon;
@@ -407,8 +426,7 @@ static void FOXHUNT_Draw(void)
     // Attenuator as an inverse label (left), tuned frequency (right).
     sprintf(str, "ATT %ddB", FOXHUNT_ATT_DB[attStep]);
     GUI_DisplaySmallestInverse(str, 4, 6, false, true, 4 + strlen(str) * 4);
-    sprintf(str, "%u.%05u", gRxVfo->pRX->Frequency / 100000, gRxVfo->pRX->Frequency % 100000);
-    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
+    FOXHUNT_DrawFreqBR(gRxVfo->pRX->Frequency);
 }
 
 // Map a navigation key to a logical step (+1 = up/increase, -1 = down/decrease),
@@ -604,19 +622,12 @@ static VfoState_t FOXHUNT_TxState(void)
 // reading cleanly.
 static void FOXHUNT_TxDeniedNotice(VfoState_t state)
 {
-    UI_DisplayClear();
-    UI_StatusClear();
-
-    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 28);
-    FOXHUNT_DrawStatusBattery();
+    // Frame (clear + BEACON tag + battery + barred TX frequency).
+    FOXHUNT_BeaconChrome();
 
     // Centred, gFontBig — same wording and font as the main screen's VFO state,
     // on line 1 so it sits exactly where the beacon's "TX" / "IDLE" text appears.
     UI_PrintString(VfoStateStr[state], 0, 127, 1, 8);
-
-    // Bottom-right: the barred TX frequency, so it is clear what was refused.
-    sprintf(str, "%u.%05u", gTxVfo->pTX->Frequency / 100000, gTxVfo->pTX->Frequency % 100000);
-    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
 
     ST7565_BlitStatusLine();
     ST7565_BlitFullScreen();
@@ -728,12 +739,8 @@ static void FOXHUNT_BeaconTransmit(void)
 
 static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft)
 {
-    UI_DisplayClear();
-    UI_StatusClear();
-
-    // Status line: BEACON tag (left) + battery (right), same style as FOX HUNT.
-    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 28);
-    FOXHUNT_DrawStatusBattery();
+    // Frame (clear + BEACON tag + battery + TX frequency).
+    FOXHUNT_BeaconChrome();
 
     // Centre, on two lines: the state, and below it the idle countdown (idle only).
     if (txNow) {
@@ -747,10 +754,6 @@ static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft)
     // Bottom-left: the idle-duration setting as an inverse label (ATT style).
     sprintf(str, "IDLE %02u", beaconIdle);
     GUI_DisplaySmallestInverse(str, 4, 6, false, true, 4 + strlen(str) * 4);
-
-    // Bottom-right: the working (TX) frequency.
-    sprintf(str, "%u.%05u", gTxVfo->pTX->Frequency / 100000, gTxVfo->pTX->Frequency % 100000);
-    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
 }
 
 static void FOXHUNT_BeaconKeys(void)
