@@ -211,24 +211,26 @@ static void FOXHUNT_SetAudio(void)
     BK4819_SetAF(BK4819_AF_MUTE);
 }
 
+// Clamped linear map of dbm over the [FLOOR, CEIL] window onto [lo, hi] (hi may sit
+// below lo for an inverted mapping). Shared by the Geiger pitch and blip-rate ramps.
+static int32_t FOXHUNT_LerpDbm(int16_t dbm, int32_t lo, int32_t hi)
+{
+    if (dbm <= FOXHUNT_DBM_FLOOR) return lo;
+    if (dbm >= FOXHUNT_DBM_CEIL)  return hi;
+    return lo + ((int32_t)(dbm - FOXHUNT_DBM_FLOOR) * (hi - lo)) /
+                (FOXHUNT_DBM_CEIL - FOXHUNT_DBM_FLOOR);
+}
+
 // Map a dBm value to a Geiger tone frequency (higher signal, higher pitch).
 static uint16_t FOXHUNT_DbmToTone(int16_t dbm)
 {
-    if (dbm <= FOXHUNT_DBM_FLOOR) return FOXHUNT_TONE_MIN;
-    if (dbm >= FOXHUNT_DBM_CEIL)  return FOXHUNT_TONE_MAX;
-    return FOXHUNT_TONE_MIN +
-        (uint16_t)(((int32_t)(dbm - FOXHUNT_DBM_FLOOR) * (FOXHUNT_TONE_MAX - FOXHUNT_TONE_MIN)) /
-                   (FOXHUNT_DBM_CEIL - FOXHUNT_DBM_FLOOR));
+    return (uint16_t)FOXHUNT_LerpDbm(dbm, FOXHUNT_TONE_MIN, FOXHUNT_TONE_MAX);
 }
 
 // Ticks between two blips: fewer ticks = faster clicking as the signal rises.
 static uint8_t FOXHUNT_BlipPeriod(int16_t dbm)
 {
-    if (dbm <= FOXHUNT_DBM_FLOOR) return FOXHUNT_RATE_SLOW_TICKS;
-    if (dbm >= FOXHUNT_DBM_CEIL)  return FOXHUNT_RATE_FAST_TICKS;
-    return FOXHUNT_RATE_SLOW_TICKS -
-        (uint8_t)(((int32_t)(dbm - FOXHUNT_DBM_FLOOR) * (FOXHUNT_RATE_SLOW_TICKS - FOXHUNT_RATE_FAST_TICKS)) /
-                  (FOXHUNT_DBM_CEIL - FOXHUNT_DBM_FLOOR));
+    return (uint8_t)FOXHUNT_LerpDbm(dbm, FOXHUNT_RATE_SLOW_TICKS, FOXHUNT_RATE_FAST_TICKS);
 }
 
 // Emit one short blip at the given pitch, then hand the chip back to RX.
@@ -386,6 +388,12 @@ static void FOXHUNT_DrawFKey(void)
         memcpy(gStatusLine + 69, gFontF, sizeof(gFontF));
 }
 
+// Draw a string right-aligned in the small (7 px) font: its right edge lands at rightX.
+static void FOXHUNT_DrawRightSmall(const char *s, uint8_t rightX, uint8_t line)
+{
+    UI_PrintStringSmallNormal(s, (uint8_t)(rightX - strlen(s) * 7), 0, line);
+}
+
 // Battery icon plus the optional voltage/percentage text, top-right of the status
 // line — shared by the hunt and beacon screens.
 static void FOXHUNT_DrawStatusBattery(void)
@@ -409,7 +417,7 @@ static void FOXHUNT_DrawStatusBattery(void)
 static void FOXHUNT_DrawFreqBR(uint32_t freq)
 {
     sprintf(str, "%u.%05u", freq / 100000, freq % 100000);
-    UI_PrintStringSmallNormal(str, 126 - strlen(str) * 7, 0, 6);
+    FOXHUNT_DrawRightSmall(str, 126, 6);
 }
 
 // Common beacon-screen frame: clear, the BEACON tag, the battery, and the TX
@@ -473,7 +481,7 @@ static void FOXHUNT_Draw(void)
     if (trendDelta != 0) {
         sprintf(str, "%+03d", trendDelta);   // sign + 2 digits, e.g. "+05" / "-12"
         UI_PrintStringSmallNormal("dBm", 127 - 3 * 7, 0, 1);
-        UI_PrintStringSmallNormal(str, 127 - 3 * 7 - 2 - strlen(str) * 7, 0, 1);
+        FOXHUNT_DrawRightSmall(str, 127 - 3 * 7 - 2, 1);   // value left of "dBm"
     }
 
     // Context line: peak hold (left), min hold (centre) and S-meter (right) as small
@@ -766,7 +774,7 @@ static void FOXHUNT_DrawTxSeconds(void)
     memset(gFrameBuffer[0], 0, sizeof(gFrameBuffer[0]));
     UI_PrintStringSmallNormal("TX", 1, 0, 0);
     sprintf(str, "%02us", sec);
-    UI_PrintStringSmallNormal(str, (uint8_t)(127 - strlen(str) * 7), 0, 0);
+    FOXHUNT_DrawRightSmall(str, 127, 0);
     beaconTxSecShown = sec;
 }
 
