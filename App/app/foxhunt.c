@@ -377,6 +377,15 @@ static void FOXHUNT_Tag(const char *s, uint8_t x, uint8_t line)
     GUI_DisplaySmallestInverse(s, x, line, false, true, (uint8_t)(x + strlen(s) * 4));
 }
 
+// Mirror the firmware's status-bar F indicator: when the F key is armed, a number key
+// steps its setting backwards. Same glyph and column as the main screens (status.c), so
+// it reads identically — Fox Hunt just renders its own status line, hence the redraw.
+static void FOXHUNT_DrawFKey(void)
+{
+    if (gWasFKeyPressed)
+        memcpy(gStatusLine + 69, gFontF, sizeof(gFontF));
+}
+
 // Battery icon plus the optional voltage/percentage text, top-right of the status
 // line — shared by the hunt and beacon screens.
 static void FOXHUNT_DrawStatusBattery(void)
@@ -409,8 +418,9 @@ static void FOXHUNT_BeaconChrome(void)
 {
     UI_DisplayClear();
     UI_StatusClear();
-    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 28);
+    GUI_DisplaySmallestInverse("BEACON", 2, 0, true, true, 26);
     FOXHUNT_DrawStatusBattery();
+    FOXHUNT_DrawFKey();
     FOXHUNT_DrawFreqBR(gTxVfo->pTX->Frequency);
 }
 
@@ -428,6 +438,7 @@ static void FOXHUNT_Draw(void)
 
     // Battery (icon + optional percentage/voltage) top-right, as on the main screens.
     FOXHUNT_DrawStatusBattery();
+    FOXHUNT_DrawFKey();
 
     // Gauge-mode icon (2 key), between the label and the audio icon: ascending
     // bars for the S-meter staircase, a sine wave for the signal history. Each
@@ -498,46 +509,60 @@ static void FOXHUNT_Draw(void)
 
 // One key = one setting, each press cycling to the next value and wrapping — the same
 // scheme for the hunt gauges and the beacon settings, so there are no navigation arrows
-// to learn. FOXHUNT_ApplyAtt is re-asserted for the attenuator; the beacon values are
-// read where they take effect (TX window at the burst start, idle at the burst end, fox
-// at the next repeat), so cycling any of them is safe at any time, TX included.
+// to learn. dir is +1 for a plain press, -1 when the F key armed a reverse step. The
+// beacon values are read where they take effect (TX window at the burst start, idle at
+// the burst end, fox at the next repeat), so cycling any of them is safe at any time.
 
-// Attenuator: 0 -> -6 -> -15 -> -27 -> 0 dB.
-static void FOXHUNT_AttCycle(void)
+// Wrap a 0..count-1 index one step forward (dir > 0) or backward, both ways round.
+static uint8_t FOXHUNT_WrapStep(uint8_t v, uint8_t count, int8_t dir)
 {
-    attStep = (uint8_t)((attStep + 1) & 3);
+    return (uint8_t)((v + (dir > 0 ? 1u : (unsigned)(count - 1u))) % count);
+}
+
+// Step a lo..hi value by step, wrapping lo<->hi at the ends.
+static uint8_t FOXHUNT_RangeStep(uint8_t v, uint8_t lo, uint8_t hi, uint8_t step, int8_t dir)
+{
+    if (dir > 0)
+        return (v >= hi) ? lo : (uint8_t)(v + step);
+    return (v <= lo) ? hi : (uint8_t)(v - step);
+}
+
+// Attenuator: 0 -> -6 -> -15 -> -27 dB (F reverses).
+static void FOXHUNT_AttCycle(int8_t dir)
+{
+    attStep = FOXHUNT_WrapStep(attStep, 4, dir);
     FOXHUNT_ApplyAtt();
 }
 
-// Fox identifier: MOE -> MOI -> MOS -> MOH -> MO5 -> CALL -> MOE.
-static void FOXHUNT_FoxCycle(void)
+// Fox identifier: MOE -> MOI -> MOS -> MOH -> MO5 -> MO -> CALL (F reverses).
+static void FOXHUNT_FoxCycle(int8_t dir)
 {
-    foxFox = (uint8_t)((foxFox + 1) % FOXHUNT_FOX_COUNT);
+    foxFox = FOXHUNT_WrapStep(foxFox, FOXHUNT_FOX_COUNT, dir);
 }
 
-// TX window: 5 s up to 60 s, then back to 5 s.
-static void FOXHUNT_TxCycle(void)
+// TX window: 5..60 s (F reverses).
+static void FOXHUNT_TxCycle(int8_t dir)
 {
-    beaconTx = (beaconTx >= FOXHUNT_BEACON_TX_MAX)
-             ? FOXHUNT_BEACON_TX_MIN : (uint8_t)(beaconTx + FOXHUNT_BEACON_TX_STEP);
+    beaconTx = FOXHUNT_RangeStep(beaconTx, FOXHUNT_BEACON_TX_MIN, FOXHUNT_BEACON_TX_MAX,
+                                 FOXHUNT_BEACON_TX_STEP, dir);
 }
 
-// Idle gap: 5 s up to 240 s, then back to 5 s.
-static void FOXHUNT_IdleCycle(void)
+// Idle gap: 5..240 s (F reverses).
+static void FOXHUNT_IdleCycle(int8_t dir)
 {
-    beaconIdle = (beaconIdle >= FOXHUNT_BEACON_IDLE_MAX)
-               ? FOXHUNT_BEACON_IDLE_MIN : (uint8_t)(beaconIdle + FOXHUNT_BEACON_IDLE_STEP);
+    beaconIdle = FOXHUNT_RangeStep(beaconIdle, FOXHUNT_BEACON_IDLE_MIN, FOXHUNT_BEACON_IDLE_MAX,
+                                   FOXHUNT_BEACON_IDLE_STEP, dir);
 }
 
-// Apply a beacon number key; returns true when it changed a setting so the caller can
-// refresh. The keys follow the on-screen layout: 1 = TX (top-left), 2 = IDLE (below it),
-// 3 = FOX (right). Shared by both beacon phases.
-static bool FOXHUNT_BeaconKey(KEY_Code_t key)
+// Apply a beacon number key in the given direction; returns true when it changed a
+// setting so the caller can refresh. Keys follow the on-screen layout: 1 = TX (top-left),
+// 2 = IDLE (below it), 3 = FOX (right). Shared by both beacon phases.
+static bool FOXHUNT_BeaconKey(KEY_Code_t key, int8_t dir)
 {
     switch (key) {
-        case KEY_1: FOXHUNT_TxCycle();   return true;
-        case KEY_2: FOXHUNT_IdleCycle(); return true;
-        case KEY_3: FOXHUNT_FoxCycle();  return true;
+        case KEY_1: FOXHUNT_TxCycle(dir);   return true;
+        case KEY_2: FOXHUNT_IdleCycle(dir); return true;
+        case KEY_3: FOXHUNT_FoxCycle(dir);  return true;
         default:    return false;
     }
 }
@@ -606,6 +631,12 @@ static void FOXHUNT_HandleKeys(void)
 
     BACKLIGHT_TurnOn();   // any keypress wakes the screen and re-arms the timers
 
+    if (kbd.current == KEY_F) {   // arm / disarm a reverse step for the next number key
+        gWasFKeyPressed = !gWasFKeyPressed;
+        return;
+    }
+    const int8_t dir = gWasFKeyPressed ? -1 : 1;
+
     switch (kbd.current) {
         case KEY_EXIT:
             foxRunning = false;
@@ -615,15 +646,15 @@ static void FOXHUNT_HandleKeys(void)
             foxGraphMode ^= 1;
             break;
         case KEY_2:
-            // Cycle the audio: silent -> Geiger beep -> station audio -> silent.
-            foxAudioMode = (uint8_t)((foxAudioMode + 1) % 3);
+            // Cycle the audio: silent -> Geiger beep -> station audio (F reverses).
+            foxAudioMode = FOXHUNT_WrapStep(foxAudioMode, 3, dir);
             FOXHUNT_SetAudio();
             if (foxAudioMode == FOXHUNT_AUDIO_BEEP)
                 audioTick = FOXHUNT_RATE_SLOW_TICKS;   // blip promptly
             break;
         case KEY_3:
-            // Cycle the attenuator (0 -> -6 -> -15 -> -27 dB, then back to 0).
-            FOXHUNT_AttCycle();
+            // Cycle the attenuator (0 -> -6 -> -15 -> -27 dB; F reverses).
+            FOXHUNT_AttCycle(dir);
             break;
         case KEY_MENU:
             // Reset the peak / min hold and the trend reference (before each body scan).
@@ -639,6 +670,8 @@ static void FOXHUNT_HandleKeys(void)
         default:
             break;
     }
+
+    gWasFKeyPressed = false;   // any non-F key consumes (or cancels) the reverse arm
 }
 
 // (Re)enter the hunt (RX) sub-mode: fixed front-end gain, attenuator and audio mode
@@ -781,9 +814,16 @@ static bool FOXHUNT_TxDelay(uint16_t ms)
             // gap of the configured IDLE length.
             return true;
         }
-        if (FOXHUNT_BeaconKey(kbd.current)) {
+        if (kbd.current == KEY_F) {         // arm / disarm the reverse step
+            gWasFKeyPressed = !gWasFKeyPressed;
+            FOXHUNT_BeaconDraw(true, 0);    // reflect the F indicator in the status line
+            FOXHUNT_BlitScreen();
+            continue;
+        }
+        if (FOXHUNT_BeaconKey(kbd.current, gWasFKeyPressed ? -1 : 1)) {
+            gWasFKeyPressed = false;        // consumed; also clears the F indicator
             FOXHUNT_BeaconDraw(true, 0);    // show the new value immediately
-            ST7565_BlitFullScreen();
+            FOXHUNT_BlitScreen();
         }
     }
     return false;
@@ -854,13 +894,26 @@ static void FOXHUNT_BeaconTransmit(void)
         FOXHUNT_BuildBeaconMsg();
 
         // Redraw once per repeat (remaining-window countdown + reset progress), in the
-        // muted gap so it never stretches a Morse element.
+        // muted gap so it never stretches a Morse element. Local LCD only here — the
+        // K5Viewer frame is pushed after the ID (below), when the text is complete.
         beaconCharsSent = 0;
         FOXHUNT_BeaconDraw(true, 0);
-        FOXHUNT_BlitScreen();
+        ST7565_BlitStatusLine();
+        ST7565_BlitFullScreen();
 
         for (uint8_t i = 0; !stop && beaconMsg[i]; i++)
             stop = FOXHUNT_MorseChar(beaconMsg[i], i + 1u);
+
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
+        // Service the K5Viewer link in the muted gap (never during a keyed element, so
+        // the Morse timing stays intact): ParseInput refills the keep-alive that Update
+        // drains — without it the link dies within ~15 repeats over a long TX window —
+        // and Update then mirrors the now-complete ID frame plus the live seconds.
+        if (!stop) {
+            K5VIEWER_ParseInput();
+            K5VIEWER_Update(false);
+        }
+#endif
 
         // Word gap before the next repeat, only while the window still has room.
         if (!stop && beaconTxMsLeft > 0)
@@ -973,7 +1026,9 @@ static void FOXHUNT_BeaconDraw(bool txNow, uint8_t idleLeft)
     FOXHUNT_BeaconChrome();
 
     if (txNow) {
-        // Top line: "TX" + remaining window seconds (refreshed live in FOXHUNT_TxDelay).
+        // On-air icon in the status bar (only while the carrier is up), then the top
+        // line "TX" + remaining window seconds (refreshed live in FOXHUNT_TxDelay).
+        memcpy(gStatusLine + 48, BITMAP_FoxHuntTx, sizeof(BITMAP_FoxHuntTx));
         FOXHUNT_DrawTxSeconds();
         FOXHUNT_DrawBeaconMessage(beaconCharsSent);
     } else {
@@ -1005,6 +1060,11 @@ static void FOXHUNT_BeaconKeys(void)
 
     BACKLIGHT_TurnOn();   // any keypress wakes the screen and re-arms the timers
 
+    if (kbd.current == KEY_F) {   // arm / disarm a reverse step for the next number key
+        gWasFKeyPressed = !gWasFKeyPressed;
+        return;
+    }
+
     switch (kbd.current) {
         case KEY_EXIT:
             foxRunning = false;                         // leave Fox Hunt entirely
@@ -1019,10 +1079,12 @@ static void FOXHUNT_BeaconKeys(void)
             beaconIdleTick = 0;
             break;
         default:
-            // 1 = TX window, 2 = idle gap, 3 = fox (same keys as during TX).
-            FOXHUNT_BeaconKey(kbd.current);
+            // 1 = TX window, 2 = idle gap, 3 = fox (F reverses); same keys as during TX.
+            FOXHUNT_BeaconKey(kbd.current, gWasFKeyPressed ? -1 : 1);
             break;
     }
+
+    gWasFKeyPressed = false;   // any non-F key consumes (or cancels) the reverse arm
 }
 
 // One iteration of the beacon loop: either transmit a burst, or count down the
@@ -1203,6 +1265,7 @@ void APP_RunFoxHunt(void)
     // launched Fox Hunt (still down on a long-press assignment) is not taken for
     // a fresh press and does not immediately toggle to the beacon.
     kbd.prev = kbd.current = KEYBOARD_GetKey();
+    gWasFKeyPressed = false;   // start with the reverse-step arm cleared
 
     foxRunning = true;
     while (foxRunning) {
@@ -1260,6 +1323,8 @@ void APP_RunFoxHunt(void)
     // Persist the session's settings so they survive a power cycle (covers EXIT
     // and the sleep auto power-off, both of which just clear foxRunning).
     FOXHUNT_SaveConfig();
+
+    gWasFKeyPressed = false;   // don't leak a pending reverse-step arm to the main screen
 
     // Mute any pending tone, drop the PA (safety), then restore the normal VFO
     // selection and RX config.
