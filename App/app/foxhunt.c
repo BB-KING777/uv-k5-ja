@@ -912,8 +912,14 @@ static void FOXHUNT_BeaconTransmit(void)
         ST7565_BlitStatusLine();
         ST7565_BlitFullScreen();
 
-        for (uint8_t i = 0; !stop && beaconMsg[i]; i++)
+        for (uint8_t i = 0; !stop && beaconMsg[i]; i++) {
             stop = FOXHUNT_MorseChar(beaconMsg[i], i + 1u);
+
+#if defined(ENABLE_UART) || defined(ENABLE_USB)
+            // Service maintenance commands in the muted inter-character gap.
+            UART_ServiceCommands();
+#endif
+        }
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
         // Service the K5Viewer link in the muted gap (never during a keyed element, so
