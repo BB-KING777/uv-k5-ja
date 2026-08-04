@@ -122,9 +122,9 @@
 // the RSSI detector, so it scales the reading linearly. Reducing the early LNA
 // alone barely moved the reading on strong signals (mixer + PGA re-amplify).
 // pgaTab (bk4829.c) = {-33,-27,-21,-15,-9,-6,-3,0}; index 7 (= 0 dB) matches the
-// RX default (0x03DF), so step 0 leaves the gain untouched.
-static const uint8_t FOXHUNT_ATT_PGA[4] = {7, 5, 3, 1};   // 0, -6, -15, -27 dB
-static const uint8_t FOXHUNT_ATT_DB[4]  = {0, 6, 15, 27};
+// RX default (0x03DF), so step 0 leaves the gain untouched. The PGA indices per step
+// are {7,5,3,1} = 7 - 2*attStep (computed in FOXHUNT_ApplyAtt, no table needed).
+static const uint8_t FOXHUNT_ATT_DB[4]  = {0, 6, 15, 27};   // 0, -6, -15, -27 dB
 
 static KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
 
@@ -146,7 +146,7 @@ static uint8_t histHead;    // index of the oldest sample (next write slot)
 static uint8_t histTick;    // decimation counter (0..FOXHUNT_HIST_DECIM-1)
 static int16_t histEma;     // EMA-smoothed level feed, dBm in 1/8 units (x8 fixed)
 
-static char str[16];
+static char str[14];   // widest write is the freq "1300.00000" (10 chars) + NUL, with slack
 
 // Sentinel-prefixed Morse patterns: after the leading 1 sentinel bit, each lower
 // bit is one element read MSB-first (0 = dit, 1 = dah). 0 = unsupported char.
@@ -168,7 +168,7 @@ static bool    beaconPhaseTx;     // true = transmit this tick, false = idle gap
 static uint8_t beaconIdle;        // configured silence between IDs (s)
 static uint8_t beaconIdleLeft;    // seconds left in the current silence
 static uint8_t beaconIdleTick;    // tick counter that clocks the idle countdown
-static char    beaconMsg[24];     // CW message, e.g. "F4HWN MOE" or "MOS"
+static char    beaconMsg[17];     // CW message: 12-char call + " MOE" + NUL, e.g. "F4HWN MOE"
 static uint8_t beaconCharsSent;   // characters completed in the current burst
 static uint8_t beaconTx;          // TX window length (s): the ID repeats for this long
 static uint16_t beaconTxMsLeft;   // ms left in the current TX window (drained as it plays)
@@ -193,7 +193,7 @@ static int16_t FOXHUNT_ReadDbm(void)
 static void FOXHUNT_ApplyAtt(void)
 {
     uint16_t reg = BK4819_ReadRegister(BK4819_REG_13);
-    reg = (reg & ~0x7u) | (uint16_t)FOXHUNT_ATT_PGA[attStep];   // PGA = REG_13 bits 0..2
+    reg = (reg & ~0x7u) | (uint16_t)(7u - 2u * attStep);   // PGA {7,5,3,1}, REG_13 bits 0..2
     BK4819_WriteRegister(BK4819_REG_13, reg);
 }
 
@@ -335,8 +335,11 @@ static void FOXHUNT_DrawHist(void)
                       FOXHUNT_GRAPH_X0 + FOXHUNT_HIST_LEN - 1, FOXHUNT_GRAPH_BOT, true);
 
     uint8_t prevY = 0;
+    uint8_t idx = histHead;   // ring index, wrapped by increment (no per-column modulo)
     for (uint8_t c = 0; c < FOXHUNT_HIST_LEN; c++) {
-        uint8_t lvl = histBuf[(histHead + c) % FOXHUNT_HIST_LEN];   // oldest -> newest
+        uint8_t lvl = histBuf[idx];   // oldest -> newest
+        if (++idx >= FOXHUNT_HIST_LEN)
+            idx = 0;
         if (lvl > FOXHUNT_SEG_COUNT)
             lvl = FOXHUNT_SEG_COUNT;
         uint8_t x = FOXHUNT_GRAPH_X0 + c;
@@ -1266,8 +1269,9 @@ void APP_RunFoxHunt(void)
     foxGraphMode = FOXHUNT_GRAPH_BAR;
     foxAudioMode = FOXHUNT_AUDIO_OFF;
     FOXHUNT_LoadConfig();     // may override att / gauge / audio / idle / fox / tx
-    FOXHUNT_BuildBeaconMsg(); // assemble the CW message from the (restored) fox id
     FOXHUNT_EnterHunt();      // applies the restored attStep and audio mode
+    // beaconMsg is (re)built by FOXHUNT_BeaconTransmit before every burst, and nothing
+    // reads it before the first burst, so no need to assemble it here.
 
     // Prime the key state with whatever is held right now, so the side key that
     // launched Fox Hunt (still down on a long-press assignment) is not taken for
