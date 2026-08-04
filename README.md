@@ -36,9 +36,9 @@ Anyway, have fun.
 > _FR - A propos de CHIRP, comme pour beaucoup d'autres firmwares, vous devez utiliser un pilote dédié. Le driver CHIRP correspondant est désormais fourni avec chaque release de ce dépôt, ce qui permet de récupérer ensemble le firmware et son pilote depuis la page des [Releases](https://github.com/armel/uv-k1-k5v3-firmware-custom/releases)._
 
 > [!CAUTION]
-> EN - I recommend to backup your calibration data with [uvtools2](https://armel.github.io/uvtools2/) just after flashing this firmware. It's a good reflex to have. 
+> EN - I recommend backing up your calibration data with [UV Studio](https://armel.github.io/uvstudio/#dump-calib) immediately after flashing this firmware. It is a good habit to adopt.
 >
-> _FR - Je recommande de sauvegarder vos données de calibration avec [uvtools2](https://armel.github.io/uvtools2/) juste après avoir flashé ce firmware. C'est un bon réflexe à avoir._
+> _FR - Je recommande de sauvegarder vos données de calibration avec [UV Studio](https://armel.github.io/uvstudio/#dump-calib) juste après avoir flashé ce firmware. C'est un bon réflexe à adopter._
 
 # Donations
 
@@ -50,7 +50,7 @@ Special thanks to Jean-Cyrille F6IWW (3 times), Fabrice 14RC123, David F4BPP, Ol
 * [Main Features from Egzumer](#main-features-from-egzumer)
 * [Manual](#manual)
 * [Compiling and Building from Docker](#compiling-and-Building-from-docker)
-* [Flashing the Firmware with UVTools2](#flashing-the-firmware-with-uvtools2)
+* [Flashing the Firmware with UV Studio](#flashing-the-firmware-with-uv-studio)
 * [Credits](#credits)
 * [Other sources of information](#other-sources-of-information)
 * [License](#license)
@@ -65,7 +65,7 @@ Fusion is the reference edition of the project. It provides an all-in-one firmwa
 - broadcast FM radio,
 - VOX and AirCopy,
 - BEAM wireless channel transfer,
-- K5Viewer screen mirroring, screenshots and remote keyboard control,
+- [UV Studio](https://armel.github.io/uvstudio/) with integrated K5Viewer screen mirroring, screenshots and remote keyboard control,
 - advanced RX audio profiles and Audio Scope,
 - first-responder-oriented controls,
 - the Breakout game,
@@ -186,7 +186,7 @@ Fusion is the reference edition of the project. It provides an all-in-one firmwa
   - persisted Beacon settings,
   - interactive control during transmission,
   - TX-lock, modulation and battery-safety checks.
-- Fox Hunt and Beacon screens are mirrored to K5Viewer.
+- Fox Hunt and Beacon screens are mirrored to UV Studio's integrated K5Viewer.
 
 ### RF Log
 
@@ -200,15 +200,16 @@ Fusion is the reference edition of the project. It provides an all-in-one firmwa
   - S-meter level,
   - battery voltage.
 - On-radio history with RX/TX filtering and detailed views.
-- Live RF Log dashboard and history access through K5Viewer.
+- Live RF Log dashboard and history access through UV Studio.
 
 ### Connectivity and data transfer
 
-- Live screen streaming to K5Viewer over a USB serial connection.
+- Live screen streaming to [UV Studio](https://armel.github.io/uvstudio/) over a USB serial connection.
 - Screenshot capture and download.
-- Remote keyboard control from K5Viewer.
-- Automatic K5Viewer reconnection after a USB disconnect.
-- RF Log monitoring and analytics in K5Viewer.
+- Remote keyboard control through the integrated K5Viewer.
+- Automatic reconnection after a USB disconnect.
+- RF Log monitoring, analytics and CSV export.
+- Firmware flashing, calibration backup and restore, and boot-logo management from the same interface.
 - BEAM transfer of complete channel settings between compatible radios.
 - Improved AirCopy interface and progress reporting.
 
@@ -386,30 +387,30 @@ remains an explicit Git operation.
 - The first run may take a few minutes while Docker builds the base image.
 - Each build runs inside Docker, so your host environment remains clean.
 
-## Flashing the Firmware with UVTools2
+## Flashing the Firmware with UV Studio
 
-You can flash the UV-K5 V3 and UV-K1 directly from your web browser using the cross-platform WebSerial-based [UVTools2](https://armel.github.io/uvtools2/).
+You can flash the UV-K5 V3 and UV-K1 directly from your web browser using the Web Serial-based [UV Studio](https://armel.github.io/uvstudio/).
 
-It works on Chrome, Chromium and Edge (desktop versions), and does not require installing any driver or software on your computer.
+UV Studio combines firmware flashing, calibration maintenance, boot-logo management, K5Viewer and RF Log in a single interface. It requires no application installation, server or account. Use a desktop browser with Web Serial support, such as Chrome, Brave, Edge, Opera or Firefox 151+.
 
 ## Steps to flash the firmware
 
-- Open UVTools2 in [flash](https://armel.github.io/uvtools2/?mode=flash) mode (or click the Flash Firmware tab).
+- Open the [Flash Firmware](https://armel.github.io/uvstudio/#flash) view in UV Studio.
 - Connect your radio to your computer using a compatible USB programming cable (USB-C or Baofeng/Kenwood like double jack USB cable).
 - Make sure your radio is in **DFU mode (flash mode)**.
-- Select the firmware .bin file on your computer. 
+- Select an official F4HWN Fusion release from the catalog or load a local `.bin` firmware file.
 - Click on `Flash Firmware`, then select the serial port associated with your radio.
 - The progress bar will guide you through the flashing steps.
 
-Once finished, your radio restart with the new firmware.
+Once finished, your radio restarts with the new firmware.
 
 ## Steps to dump or restore calibration data
 
-[UVTools2](https://armel.github.io/uvtools2/) can also dump and restore calibration data, which is highly recommended. It’s best to create a dump right after installing F4HWN firmware, and to restore it before installing another firmware (or when returning to the stock firmware, for example).
+[UV Studio](https://armel.github.io/uvstudio/) can also dump and restore calibration data, which is highly recommended. It is best to create a dump immediately after installing the F4HWN firmware, and to restore it before installing another firmware or returning to the stock firmware.
 
 ### Dump
 
-- Open UVTools2 in [dump](https://armel.github.io/uvtools2/?mode=dump) mode (or click the Dump Calib tab).
+- Open the [Dump Calibration](https://armel.github.io/uvstudio/#dump-calib) view in UV Studio.
 - Power on your radio in **normal mode**.
 - Click `Dump Calibration Data`.
 
@@ -420,9 +421,9 @@ When the process is complete, click `Download calibration.dat` to save the file 
 
 ### Restore
 
-- Open UVTools2 in [restore](https://armel.github.io/uvtools2/?mode=restore) mode (or click the Restore Calib tab).
+- Open the [Restore Calibration](https://armel.github.io/uvstudio/#restore-calib) view in UV Studio.
 - Power on your radio in **normal mode**.
-- Select your calibration.dat file on your computer.
+- Select your `calibration.dat` file on your computer.
 
 Click `Restore Calibration Data` and wait until the process fully completes.
 
