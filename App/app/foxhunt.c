@@ -118,13 +118,39 @@
 #define FOXHUNT_MSG_LINE_ID    3
 #define FOXHUNT_MSG_LINE_ONE   2
 
-// Attenuator via the BK4829 PGA (REG_13 bits 0..2) — the last gain stage before
-// the RSSI detector, so it scales the reading linearly. Reducing the early LNA
-// alone barely moved the reading on strong signals (mixer + PGA re-amplify).
-// pgaTab (bk4829.c) = {-33,-27,-21,-15,-9,-6,-3,0}; index 7 (= 0 dB) matches the
-// RX default (0x03DF), so step 0 leaves the gain untouched. The PGA indices per step
-// are {7,5,3,1} = 7 - 2*attStep (computed in FOXHUNT_ApplyAtt, no table needed).
-static const uint8_t FOXHUNT_ATT_DB[4]  = {0, 6, 15, 27};   // 0, -6, -15, -27 dB
+// Front-end gain ladder (KEY_3), written straight to the BK4829 gain register REG_13.
+// Fields (LSB->MSB): pga[2:0], mixer[4:3], lna[7:5], lnaS[9:8]; gain tables live in
+// bk4829.c (BK4819_GetRxGain_dB). The RX default is 0x03DF (pga7/mixer3/lna6/lnaS3).
+//
+// Steps 0..3 attenuate the PGA only (the last stage) — {pga 7,5,3,1} = 0/-6/-15/-27 dB
+// on top of the default — same behaviour as before. Steps 4..5 attenuate at the *front*
+// of the chain instead: right on top of the fox the LNA saturates, so cutting after it
+// (PGA) no longer tracks the field; reducing the LNA itself brings it back into its
+// linear region and restores the gradient for the final approach.
+//
+// What "BYP" / "BYP+" actually are: a label of convenience, NOT a hardware bypass — the
+// BK4829 has no LNA-bypass switch we flip here. Both steps simply keep the PGA at minimum
+// and pull the front-end gain fields of REG_13 further down:
+//   BYP  (step 4): LNA reduced           (lna 6->3)              — front-end starts giving
+//   BYP+ (step 5): LNA + LNA-short cut    (lna 3->1, lnaS 3->1)  — deepest front-end cut
+//
+// Total gain stays monotonic: -2/-8/-17/-29/-36/-70 dB. These values are a sane starting
+// point — expect to trim them on the air against a strong close source. NB the shown dBm
+// is not gain-compensated (bk4829.c), so the reading steps down when BYP engages; that is
+// intended (it re-centres the S-meter).
+#define FOXHUNT_ATT_COUNT  6    // 4 PGA steps + 2 front-end (BYP) steps
+#define FOXHUNT_ATT_BYP0   4    // first step at which the front-end (LNA) is reduced
+#define FOXHUNT_ATT_SETTLE_MS 40  // let the RSSI detector converge to the new gain before
+                                  // rebasing the holds/trend/history onto it (tune on air)
+static const uint16_t FOXHUNT_ATT_REG13[FOXHUNT_ATT_COUNT] = {
+    0x03DF,   // 0    pga7                 ATT   0 dB (RX default)
+    0x03DD,   // 1    pga5                 ATT  -6 dB
+    0x03DB,   // 2    pga3                 ATT -15 dB
+    0x03D9,   // 3    pga1                 ATT -27 dB
+    0x0379,   // 4    pga1 lna3            BYP  (front-end starts giving)
+    0x0139,   // 5    pga1 lna1 lnaS1      BYP+ (deep front-end cut)
+};
+static const uint8_t FOXHUNT_ATT_DB[FOXHUNT_ATT_BYP0] = {0, 6, 15, 27};   // PGA-step labels
 
 static KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
 
@@ -189,11 +215,14 @@ static int16_t FOXHUNT_ReadDbm(void)
     return BK4819_GetRSSI_dBm() + dBmCorrTable[gRxVfo->Band];
 }
 
-// Apply the selected attenuator step to the BK4829 PGA gain field.
+// Apply the selected step's BK4829 gain preset to REG_13: the PGA for the ATT steps,
+// plus the LNA/LNAs for the BYP steps. Read-modify-write masked to the known gain
+// fields (bits 0..9), so the undocumented upper bits 10..15 are preserved rather than
+// cleared. Every preset fits within 0x03FF, so only the gain fields ever change.
 static void FOXHUNT_ApplyAtt(void)
 {
     uint16_t reg = BK4819_ReadRegister(BK4819_REG_13);
-    reg = (reg & ~0x7u) | (uint16_t)(7u - 2u * attStep);   // PGA {7,5,3,1}, REG_13 bits 0..2
+    reg = (reg & ~0x03FFu) | FOXHUNT_ATT_REG13[attStep];
     BK4819_WriteRegister(BK4819_REG_13, reg);
 }
 
@@ -512,8 +541,12 @@ static void FOXHUNT_Draw(void)
         GUI_DisplaySmallest("+40", 110, 41, false, true);
     }
 
-    // Attenuator as an inverse label (left), tuned frequency (right).
-    sprintf(str, "ATT %ddB", FOXHUNT_ATT_DB[attStep]);
+    // Front-end ladder as an inverse label (left), tuned frequency (right). The PGA
+    // steps show "ATT xxdB"; the two front-end steps show "BYP" / "BYP+".
+    if (attStep < FOXHUNT_ATT_BYP0)
+        sprintf(str, "ATT %ddB", FOXHUNT_ATT_DB[attStep]);
+    else
+        strcpy(str, (attStep == FOXHUNT_ATT_BYP0) ? "BYP" : "BYP+");
     FOXHUNT_Tag(str, 4, 6);
     FOXHUNT_DrawFreqBR(gRxVfo->pRX->Frequency);
 }
@@ -538,11 +571,44 @@ static uint8_t FOXHUNT_RangeStep(uint8_t v, uint8_t lo, uint8_t hi, uint8_t step
     return (v <= lo) ? hi : (uint8_t)(v - step);
 }
 
-// Attenuator: 0 -> -6 -> -15 -> -27 dB (F reverses).
+// Rebase the level-tracking state (peak/min hold, trend reference and the signal
+// history) onto a fresh reading. Used at hunt entry and after any front-end gain
+// change: the shown dBm is not gain-compensated, so without this a step change would
+// leave a stale peak, an artificial min, a one-shot false trend spike and a cliff in
+// the sparkline.
+static void FOXHUNT_RebaseMeasurements(void)
+{
+    curDbm     = FOXHUNT_ReadDbm();
+    peakDbm    = curDbm;
+    minDbm     = curDbm;
+    trendRef   = curDbm;
+    trendDelta = 0;
+    trendTick  = 0;
+
+    // Prime the signal history flat at the current level so the sparkline scrolls in
+    // from a sensible baseline instead of showing the gain step as a cliff.
+    {
+        uint8_t lvl = FOXHUNT_FillCount(curDbm);
+        for (uint8_t i = 0; i < FOXHUNT_HIST_LEN; i++)
+            histBuf[i] = lvl;
+    }
+    histHead = 0;
+    histTick = 0;
+    histEma  = (int16_t)(curDbm * 8);
+}
+
+// Front-end ladder: ATT 0 -> -6 -> -15 -> -27 dB, then BYP -> BYP+ (F reverses).
 static void FOXHUNT_AttCycle(int8_t dir)
 {
-    attStep = FOXHUNT_WrapStep(attStep, 4, dir);
+    attStep = FOXHUNT_WrapStep(attStep, FOXHUNT_ATT_COUNT, dir);
     FOXHUNT_ApplyAtt();
+
+    // Wait for the RSSI to settle to the new gain, THEN rebase the holds/trend/history.
+    // Reading straight away would latch the old-gain level, and as the RSSI converges
+    // over the next ticks the very artifacts the rebase avoids (stuck peak, false trend
+    // spike, sparkline cliff) would reappear.
+    SYSTEM_DelayMs(FOXHUNT_ATT_SETTLE_MS);
+    FOXHUNT_RebaseMeasurements();
 }
 
 // Fox identifier: MOE -> MOI -> MOS -> MOH -> MO5 -> MO -> CALL (F reverses).
@@ -664,7 +730,7 @@ static void FOXHUNT_HandleKeys(void)
                 audioTick = FOXHUNT_RATE_SLOW_TICKS;   // blip promptly
             break;
         case KEY_3:
-            // Cycle the attenuator (0 -> -6 -> -15 -> -27 dB; F reverses).
+            // Cycle the front-end ladder (ATT 0/-6/-15/-27 dB, then BYP/BYP+; F reverses).
             FOXHUNT_AttCycle(dir);
             break;
         case KEY_MENU:
@@ -697,24 +763,14 @@ static void FOXHUNT_EnterHunt(void)
     FOXHUNT_ApplyAtt();
     FOXHUNT_SetAudio();          // (re)apply the current audio mode: off / beep / station
 
-    curDbm     = FOXHUNT_ReadDbm();
-    peakDbm    = curDbm;
-    minDbm     = curDbm;
-    trendRef   = curDbm;
-    trendDelta = 0;
-    trendTick  = 0;
+    // Let the RSSI settle to the gain just applied, then reset the peak/min hold, trend
+    // reference and signal history onto a fresh reading (also re-primes the sparkline on
+    // return from the beacon). Same settle as FOXHUNT_AttCycle: without it a restored
+    // BYP/BYP+ step at start-up or on beacon return would rebase onto the old-gain reading.
+    // SetAudio already waits when audio is on, but not in the default audio-off case.
+    SYSTEM_DelayMs(FOXHUNT_ATT_SETTLE_MS);
+    FOXHUNT_RebaseMeasurements();
     audioTick  = (foxAudioMode == FOXHUNT_AUDIO_BEEP) ? FOXHUNT_RATE_SLOW_TICKS : 0;
-
-    // Prime the signal history flat at the current level so the sparkline scrolls
-    // in from a sensible baseline (also applies on return from the beacon).
-    {
-        uint8_t lvl = FOXHUNT_FillCount(curDbm);
-        for (uint8_t i = 0; i < FOXHUNT_HIST_LEN; i++)
-            histBuf[i] = lvl;
-    }
-    histHead = 0;
-    histTick = 0;
-    histEma  = (int16_t)(curDbm * 8);
 }
 
 // Evaluate the TX gates for the beacon's TX VFO in the same precedence order as
@@ -1199,7 +1255,7 @@ static void FOXHUNT_LoadConfig(void)
     PY25Q16_ReadBuffer(FOXHUNT_CFG_ADDR, cfg, sizeof(cfg));
 
     if (cfg[0] == FOXHUNT_CFG_MAGIC) {                    // valid, saved config
-        if (cfg[1] <= 3)                     attStep      = cfg[1];
+        if (cfg[1] < FOXHUNT_ATT_COUNT)      attStep      = cfg[1];
         if (cfg[2] <= FOXHUNT_GRAPH_HIST)    foxGraphMode = cfg[2];
         if (cfg[3] <= FOXHUNT_AUDIO_STATION) foxAudioMode = cfg[3];
         if (cfg[4] >= FOXHUNT_BEACON_IDLE_MIN && cfg[4] <= FOXHUNT_BEACON_IDLE_MAX
