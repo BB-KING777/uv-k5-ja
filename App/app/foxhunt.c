@@ -656,8 +656,14 @@ static void FOXHUNT_TickDelay(void)
 }
 
 // Idle housekeeping the foreground scheduler normally does but this modal loop
-// bypasses: backlight timeout (BLTime) and, while hunting, the sleep auto power
-// off. Cadenced on the 500 ms system tick.
+// bypasses: the periodic battery sample, the config save and the backlight
+// timeout (BLTime). Cadenced on the 500 ms system tick.
+//
+// The SetOff auto power-off is deliberately NOT run here. Fox Hunt is an active,
+// attended mode that receives a signal continuously; the main loop never sleeps
+// while receiving (it re-arms gSleepModeCountdown_500ms on RX), so the old
+// hand-back-to-main scheme just ejected the user to the VFO instead of powering
+// off. Both hunt and beacon therefore ignore SetOff and run until EXIT.
 static void FOXHUNT_IdleHousekeeping(void)
 {
     if (!gNextTimeslice_500ms)
@@ -679,22 +685,11 @@ static void FOXHUNT_IdleHousekeeping(void)
     // just a clean EXIT). No-op when nothing changed.
     FOXHUNT_SaveConfig();
 
-    // Backlight timeout: switch it off when the countdown expires (both modes).
+    // Backlight timeout: at BLTime expiry drop from BLMax to BLMin (both modes).
     if (gBacklightCountdown_500ms > 0
         && gEeprom.BACKLIGHT_TIME < 61
         && --gBacklightCountdown_500ms == 0)
         BACKLIGHT_TurnOff();
-
-#ifdef ENABLE_FEAT_F4HWN_SLEEP
-    // Auto power-off: only while hunting (a running beacon must stay alive). Hand
-    // back to the main loop just before expiry so it performs the actual sleep.
-    if (!foxBeacon && gSetting_set_off != 0 && gSleepModeCountdown_500ms > 0) {
-        if (gSleepModeCountdown_500ms > 1)
-            gSleepModeCountdown_500ms--;
-        else
-            foxRunning = false;
-    }
-#endif
 }
 
 static void FOXHUNT_HandleKeys(void)
@@ -1217,7 +1212,7 @@ static void FOXHUNT_BeaconTick(void)
             beaconPhaseTx = true;                        // next tick transmits
     }
 
-    FOXHUNT_IdleHousekeeping();   // backlight timeout (no sleep while beaconing)
+    FOXHUNT_IdleHousekeeping();   // battery sample + save + backlight timeout
     FOXHUNT_TickDelay();          // tick delay + smooth backlight fade
 }
 
@@ -1390,12 +1385,12 @@ void APP_RunFoxHunt(void)
                          : BK4819_AF_MUTE);
         }
 
-        FOXHUNT_IdleHousekeeping();   // backlight timeout / sleep
+        FOXHUNT_IdleHousekeeping();   // battery sample + save + backlight timeout
         FOXHUNT_TickDelay();          // tick delay + smooth backlight fade
     }
 
-    // Persist the session's settings so they survive a power cycle (covers EXIT
-    // and the sleep auto power-off, both of which just clear foxRunning).
+    // Persist the session's settings on the way out (EXIT clears foxRunning) so
+    // they survive a later power cycle.
     FOXHUNT_SaveConfig();
 
     gWasFKeyPressed = false;   // don't leak a pending reverse-step arm to the main screen
