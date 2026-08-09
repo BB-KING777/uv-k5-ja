@@ -733,7 +733,7 @@ static void UI_MENU_DrawCategories(void)
     sprintf(str, "%02u/%02u", 1 + cur, count);
     UI_PrintStringSmallNormal(str, 6, 0, 6);
 
-    sprintf(str, "%u", UI_MENU_CategoryItemCount(gCatOrder[cur]));
+    sprintf(str, "%02u", UI_MENU_CategoryItemCount(gCatOrder[cur]));
     UI_PrintString(str, x1, x2, 1, 8);
     UI_PrintStringSmallNormal("items", x1, x2, 5);
 
