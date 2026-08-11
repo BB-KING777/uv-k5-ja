@@ -18,6 +18,9 @@
 #include <stdlib.h>  // abs()
 
 #include "app/app.h"
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+    #include "app/action.h"
+#endif
 #include "app/chFrScanner.h"
 #include "app/dtmf.h"
 
@@ -1322,6 +1325,23 @@ static void UI_PrintScanRangeCss(char *String, uint8_t LabelX, uint8_t ValueX, u
 }
 #endif
 
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+static void UI_PrintActionPickerLabel(uint8_t index, uint8_t line, bool big)
+{
+    char label[20];
+    strcpy(label, gSubMenu_SIDEFUNCTIONS[index].name);
+
+    char *newline = strchr(label, '\n');
+    if (newline != NULL)
+        *newline = ' ';
+
+    if (big)
+        UI_PrintString(label, 0, LCD_WIDTH, line, 8);
+    else
+        UI_PrintStringSmallNormal(label, 0, LCD_WIDTH, line);
+}
+#endif
+
 void UI_DisplayMain(void)
 {
     char               String[22];
@@ -1341,6 +1361,25 @@ void UI_DisplayMain(void)
         ST7565_BlitFullScreen();
         return;
     }
+
+#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+    if (gActionPickerKey != 0) {
+        const uint8_t selection = gActionPickerSelection[gActionPickerKey - 1];
+        uint8_t previous = selection - 1;
+        uint8_t next = selection + 1;
+
+        if (previous == 0)
+            previous = gSubMenu_SIDEFUNCTIONS_size - 1;
+        if (next >= gSubMenu_SIDEFUNCTIONS_size)
+            next = 1;
+
+        UI_PrintActionPickerLabel(previous, 1, false);
+        UI_PrintActionPickerLabel(selection, 2, true);
+        UI_PrintActionPickerLabel(next, 4, false);
+        ST7565_BlitFullScreen();
+        return;
+    }
+#endif
 
 #ifndef ENABLE_FEAT_F4HWN
     if (gEeprom.KEY_LOCK && gKeypadLocked > 0)
