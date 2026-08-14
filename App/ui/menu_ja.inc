@@ -408,20 +408,23 @@ const char* const gSubMenu_SCRAMBLER[] =
     #endif
 
     #ifdef ENABLE_FEAT_F4HWN_AUDIO
+        // MUST STAY ASCII. Besides the menu, these two tables are drawn on the
+        // main screen by GUI_DisplaySmallest() (ui/main.c), which uses the 3x5
+        // pixel font - far too small for Japanese, and it has no glyphs for it.
         const char* const gSubMenu_SET_AUD_FM[] =
         {
-            "フラット",
-            "クリア",
-            "中音",
-            "ブースト",
-            "最大"
+            "FLAT",
+            "CLEAN",
+            "MID",
+            "BOOST",
+            "MAX"
         };
 
         const char* const gSubMenu_SET_AUD_AM[] =
         {
-            "シャープ",
-            "標準",
-            "オープン"
+            "SHARP",
+            "STOCK",
+            "OPEN"
         };
     #endif
 

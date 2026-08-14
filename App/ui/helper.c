@@ -466,6 +466,13 @@ static void sort(int16_t *a, int16_t *b)
       const uint8_t *p = (const uint8_t *)pString;
 
       while ((c = *p++) && c != '\0') {
+        // gFont3x5 only covers 0x20..0x7F. Anything else - a stray byte, or a
+        // multi byte UTF-8 sequence that slipped into a string drawn with this
+        // font - used to index past the end of the table and paint garbage.
+        if (c < 0x20 || c >= 0x20 + ARRAY_SIZE(gFont3x5)) {
+          x += 4;
+          continue;
+        }
         c -= 0x20;
         for (int i = 0; i < 3; ++i) {
           pixels = gFont3x5[c][i];
