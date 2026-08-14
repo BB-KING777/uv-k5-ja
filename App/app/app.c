@@ -28,6 +28,9 @@
     #include "app/beam.h"
 #endif
 #include "app/app.h"
+#ifdef ENABLE_SI4732
+#include "app/si4732.h"
+#endif
 #include "app/chFrScanner.h"
 #include "app/dtmf.h"
 #ifdef ENABLE_FLASHLIGHT
@@ -114,6 +117,9 @@ void (*const ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKey
 
 #ifdef ENABLE_FMRADIO
     [DISPLAY_FM] = &FM_ProcessKeys,
+#endif
+#ifdef ENABLE_SI4732
+    [DISPLAY_SI4732] = &SI4732APP_ProcessKeys,
 #endif
 
 #ifdef ENABLE_AIRCOPY
@@ -262,6 +268,11 @@ static bool ScreenSaverCanDisplay(void)
         return true;
 
 #ifdef ENABLE_FMRADIO
+#ifdef ENABLE_SI4732
+    if (gScreenToDisplay == DISPLAY_SI4732)
+        SI4732APP_Poll();
+#endif
+
     if (gScreenToDisplay == DISPLAY_FM)
         return true;
 #endif

@@ -156,6 +156,13 @@ enable_feature(ENABLE_LANG_JA
 # menu entry. Only meaningful on a radio that is never a UV-K1.
 enable_feature(ENABLE_FIXED_NAV_K5)
 
+# Si4732 HF / MW / LW receive module wired onto the BK1080 footprint.
+enable_feature(ENABLE_SI4732
+    driver/si4732.c
+    app/si4732.c
+    ui/si4732.c
+)
+
 # ---- CUSTOM MODS ----
 
 enable_feature(ENABLE_SPECTRUM

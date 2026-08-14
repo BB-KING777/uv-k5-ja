@@ -38,6 +38,9 @@
 #include "ui/menu.h"
 #include "ui/scanner.h"
 #include "ui/ui.h"
+#ifdef ENABLE_SI4732
+#include "ui/si4732.h"
+#endif
 #include "../misc.h"
 
 GUI_DisplayType_t gScreenToDisplay;
@@ -55,6 +58,9 @@ void (*const UI_DisplayFunctions[])(void) = {
 
 #ifdef ENABLE_FMRADIO
     [DISPLAY_FM] = &UI_DisplayFM,
+#endif
+#ifdef ENABLE_SI4732
+    [DISPLAY_SI4732] = &UI_DisplaySI4732,
 #endif
 
 #ifdef ENABLE_AIRCOPY

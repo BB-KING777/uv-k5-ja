@@ -484,6 +484,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
     {"PTT",             ACTION_OPT_PTT},
     {"帯域幅",          ACTION_OPT_WN},
     {"ミュート",        ACTION_OPT_MUTE},
+#ifdef ENABLE_SI4732
+    {"短波受信",        ACTION_OPT_SI4732},
+#endif
     #ifdef ENABLE_FEAT_F4HWN_AUDIO
         {"音質",           ACTION_OPT_RXA},
     #endif

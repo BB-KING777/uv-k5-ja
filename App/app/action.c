@@ -18,6 +18,22 @@
 #include <string.h>
 
 #include "app/action.h"
+#ifdef ENABLE_SI4732
+    #include "app/si4732.h"
+    #include "ui/ui.h"
+
+    static void ACTION_SI4732(void)
+    {
+        if (gScreenToDisplay == DISPLAY_SI4732) {
+            SI4732APP_Stop();
+            gRequestDisplayScreen = DISPLAY_MAIN;
+            return;
+        }
+
+        SI4732APP_Init();
+        gRequestDisplayScreen = DISPLAY_SI4732;
+    }
+#endif
 #include "app/app.h"
 #include "app/chFrScanner.h"
 #include "app/common.h"
@@ -93,6 +109,10 @@ void (*const action_opt_table[])(void) = {
     [ACTION_OPT_FM] = &ACTION_FM,
 #else
     [ACTION_OPT_FM] = &FUNCTION_NOP,
+#endif
+
+#ifdef ENABLE_SI4732
+    [ACTION_OPT_SI4732] = &ACTION_SI4732,
 #endif
 
 #ifdef ENABLE_ALARM
