@@ -24,6 +24,7 @@
                 "ENABLE_DTMF_CALLING": false,
                 "ENABLE_FLASHLIGHT": true,
                 "ENABLE_SPECTRUM": false,
+                "ENABLE_LANG_JA": false,
                 "ENABLE_BIG_FREQ": true,
                 "ENABLE_SMALL_BOLD": true,
                 "ENABLE_CUSTOM_MENU_LAYOUT": true,
@@ -224,6 +225,26 @@
                 "EDITION_STRING": "Fusion",
                 "TARGET": "f4hwn.fusion"
             }
+        },
+        {
+            "name": "CustomJa",
+            "displayName": "Custom (Japanese UI)",
+            "inherits": "Custom",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "ENABLE_LANG_JA": true,
+                "TARGET": "f4hwn.custom.ja"
+            }
+        },
+        {
+            "name": "FusionJa",
+            "displayName": "Fusion (Japanese UI)",
+            "inherits": "Fusion",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "ENABLE_LANG_JA": true,
+                "TARGET": "f4hwn.fusion.ja"
+            }
         }
     ],
     "buildPresets": [
@@ -254,6 +275,14 @@
         {
             "name": "Fusion",
             "configurePreset": "Fusion"
+        },
+        {
+            "name": "CustomJa",
+            "configurePreset": "CustomJa"
+        },
+        {
+            "name": "FusionJa",
+            "configurePreset": "FusionJa"
         }
     ]
 }

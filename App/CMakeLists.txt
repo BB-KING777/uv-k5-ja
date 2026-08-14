@@ -142,6 +142,16 @@ enable_feature(ENABLE_FLASHLIGHT
     app/flashlight.c
 )
 
+# ---- LANGUAGE ----
+
+# Japanese UI. Adds the Misaki 8x8 glyph subset and the UTF-8 aware text
+# renderer; regenerate App/font_ja.c with tools/lang_ja/build_font.sh after
+# editing any Japanese string.
+enable_feature(ENABLE_LANG_JA
+    font_ja.c
+    font_ja_util.c
+)
+
 # ---- CUSTOM MODS ----
 
 enable_feature(ENABLE_SPECTRUM

@@ -19,6 +19,7 @@
 #include "driver/st7565.h"
 #include "external/printf/printf.h"
 #include "font.h"
+#include "font_ja.h"
 #include "ui/helper.h"
 #include "ui/inputbox.h"
 #include "misc.h"
@@ -67,10 +68,85 @@ void UI_GenerateChannelStringEx(char *pString, const bool bShowPrefix, const uin
     }
 }
 
+#ifdef ENABLE_LANG_JA
+
+// Pixel width of a UTF-8 string drawn with the small font. ASCII keeps the
+// stock pitch, Japanese glyphs are a fixed 8 px cell.
+unsigned int UI_StringWidthSmall(const char *pString, uint32_t char_width)
+{
+    const unsigned int char_spacing = char_width + 1;
+    unsigned int       width        = 0;
+    const char        *p            = pString;
+
+    while (*p) {
+        const uint32_t cp = UTF8_Next(&p);
+        width += (cp < 0x80) ? char_spacing : JA_CELL_WIDTH;
+    }
+
+    return width;
+}
+
+// Pixel width of a UTF-8 string drawn with the big font. Japanese glyphs are
+// either the plain 8 px cell or the 16 px doubled cell.
+unsigned int UI_StringWidthBig(const char *pString, uint8_t ascii_width, bool doubled)
+{
+    unsigned int width = 0;
+    const char  *p     = pString;
+
+    while (*p) {
+        const uint32_t cp = UTF8_Next(&p);
+        if (cp < 0x80)
+            width += ascii_width;
+        else
+            width += doubled ? (JA_CELL_WIDTH * 2) : JA_CELL_WIDTH;
+    }
+
+    return width;
+}
+
+// Doubles the four low bits of a column byte into a full byte, so an 8 px tall
+// glyph column becomes the low or high half of a 16 px tall one.
+static uint8_t ja_stretch_nibble(uint8_t bits)
+{
+    uint8_t out = 0;
+
+    for (uint8_t i = 0; i < 4; i++)
+        if ((bits >> i) & 1u)
+            out |= (uint8_t)(3u << (i * 2));
+
+    return out;
+}
+
+#endif
+
 void UI_PrintStringBuffer(const char *pString, uint8_t * buffer, uint32_t char_width, const uint8_t *font)
 {
-    const size_t Length = strlen(pString);
     const unsigned int char_spacing = char_width + 1;
+
+#ifdef ENABLE_LANG_JA
+    const char  *p = pString;
+    unsigned int x = 1;
+
+    while (*p) {
+        const uint32_t cp = UTF8_Next(&p);
+
+        if (cp < 0x80) {
+            if (x + char_width > LCD_WIDTH)
+                break;
+            if (cp > ' ' && cp < 127)
+                memcpy(buffer + x, font + (cp - ' ' - 1) * char_width, char_width);
+            x += char_spacing;
+        } else {
+            const uint8_t *glyph = FONT_JA_Glyph(cp);
+            if (x + JA_CELL_WIDTH > LCD_WIDTH)
+                break;
+            if (glyph != 0)
+                memcpy(buffer + x, glyph, JA_CELL_WIDTH);
+            x += JA_CELL_WIDTH;
+        }
+    }
+#else
+    const size_t Length = strlen(pString);
     for (size_t i = 0; i < Length; i++) {
         const unsigned int index = pString[i] - ' ' - 1;
         if (pString[i] > ' ' && pString[i] < 127) {
@@ -78,10 +154,78 @@ void UI_PrintStringBuffer(const char *pString, uint8_t * buffer, uint32_t char_w
             memcpy(buffer + offset, font + index * char_width, char_width);
         }
     }
+#endif
 }
 
 void UI_PrintString(const char *pString, uint8_t Start, uint8_t End, uint8_t Line, uint8_t Width)
 {
+#ifdef ENABLE_LANG_JA
+    const char  *p = pString;
+    unsigned int x;
+    bool         doubled = false;
+
+    // Japanese glyphs are drawn twice as large when the caller gave us a text
+    // area and the whole string still fits in it, so short values keep the
+    // weight of the stock big font. Otherwise they fall back to the 8 px cell,
+    // vertically centred inside the 16 px band.
+    if (End > Start) {
+        const unsigned int avail = (unsigned int)End - Start;
+
+        const unsigned int width_2x = UI_StringWidthBig(pString, Width, true);
+
+        doubled = (width_2x <= avail);
+
+        const unsigned int width = doubled ? width_2x : UI_StringWidthBig(pString, Width, false);
+
+        if (width < avail)
+            Start += ((avail - width) + 1) / 2;
+    }
+
+    x = Start;
+
+    while (*p) {
+        const uint32_t cp = UTF8_Next(&p);
+
+        if (cp < 0x80) {
+            if (x + Width > LCD_WIDTH)
+                break;
+            if (cp > ' ' && cp < 127) {
+                const unsigned int index = cp - ' ' - 1;
+                memcpy(gFrameBuffer[Line + 0] + x, &gFontBig[index][0], 7);
+                memcpy(gFrameBuffer[Line + 1] + x, &gFontBig[index][7], 7);
+            }
+            x += Width;
+            continue;
+        }
+
+        const uint8_t *glyph = FONT_JA_Glyph(cp);
+        const unsigned int cell = doubled ? (JA_CELL_WIDTH * 2) : JA_CELL_WIDTH;
+
+        if (x + cell > LCD_WIDTH)
+            break;
+
+        if (glyph != 0) {
+            for (uint8_t col = 0; col < JA_CELL_WIDTH; col++) {
+                const uint8_t bits = glyph[col];
+
+                if (doubled) {
+                    const uint8_t lo = ja_stretch_nibble(bits & 0x0F);
+                    const uint8_t hi = ja_stretch_nibble(bits >> 4);
+                    gFrameBuffer[Line + 0][x + (col * 2) + 0] = lo;
+                    gFrameBuffer[Line + 0][x + (col * 2) + 1] = lo;
+                    gFrameBuffer[Line + 1][x + (col * 2) + 0] = hi;
+                    gFrameBuffer[Line + 1][x + (col * 2) + 1] = hi;
+                } else {
+                    // centre the 8 px cell in the 16 px band
+                    gFrameBuffer[Line + 0][x + col] |= (uint8_t)(bits << 4);
+                    gFrameBuffer[Line + 1][x + col] |= (uint8_t)(bits >> 4);
+                }
+            }
+        }
+
+        x += cell;
+    }
+#else
     size_t i;
     size_t Length = strlen(pString);
 
@@ -98,16 +242,25 @@ void UI_PrintString(const char *pString, uint8_t Start, uint8_t End, uint8_t Lin
             memcpy(gFrameBuffer[Line + 1] + ofs, &gFontBig[index][7], 7);
         }
     }
+#endif
 }
 
 void UI_PrintStringSmall(const char *pString, uint8_t Start, uint8_t End, uint8_t Line, uint8_t char_width, const uint8_t *font)
 {
+#ifdef ENABLE_LANG_JA
+    if (End > Start) {
+        const unsigned int width = UI_StringWidthSmall(pString, char_width);
+        if (width < (unsigned int)(End - Start))
+            Start += (((End - Start) - width) + 1) / 2;
+    }
+#else
     const size_t Length = strlen(pString);
     const unsigned int char_spacing = char_width + 1;
 
     if (End > Start) {
         Start += (((End - Start) - Length * char_spacing) + 1) / 2;
     }
+#endif
 
     UI_PrintStringBuffer(pString, gFrameBuffer[Line] + Start, char_width, font);
 }
@@ -124,11 +277,16 @@ void UI_PrintStringSmallNormalInverse(const char *pString, uint8_t Start, uint8_
     UI_PrintStringSmallNormal(pString, Start, End, Line);
 
     // Now invert the framebuffer bits for the rendered area
+#ifdef ENABLE_LANG_JA
+    uint8_t x_start = Start;
+    uint8_t x_end   = Start + UI_StringWidthSmall(pString, ARRAY_SIZE(gFontSmall[0])) + 1;
+#else
     uint8_t len = strlen(pString);
     uint8_t char_width = 7; // small font is typically 6px wide
 
     uint8_t x_start = Start;
     uint8_t x_end   = Start + (len * char_width) + 1;
+#endif
 
     if (End != 0 && x_end > End)
         x_end = End;

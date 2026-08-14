@@ -1328,7 +1328,7 @@ static void UI_PrintScanRangeCss(char *String, uint8_t LabelX, uint8_t ValueX, u
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
 static void UI_PrintActionPickerLabel(uint8_t index, uint8_t line, bool big)
 {
-    char label[20];
+    char label[32];  // Japanese names need more bytes than the ASCII originals
     strcpy(label, gSubMenu_SIDEFUNCTIONS[index].name);
 
     char *newline = strchr(label, '\n');

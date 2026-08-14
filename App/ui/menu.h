@@ -23,8 +23,18 @@
 #include "audio.h"     // VOICE_ID_t
 #include "settings.h"
 
+// The menu name column is 48 px wide. ASCII is 8 px per character, a Japanese
+// glyph is also 8 px, so either way six characters fit - but six Japanese
+// characters need 18 bytes of UTF-8 plus the terminator.
+#define MENU_LIST_WIDTH_PX 48
+#ifdef ENABLE_LANG_JA
+    #define MENU_NAME_LEN 19
+#else
+    #define MENU_NAME_LEN 7
+#endif
+
 typedef struct __attribute__((packed)) {
-    const char  name[7];    // menu display area only has room for 6 characters
+    const char  name[MENU_NAME_LEN];    // menu display area only has room for 6 characters
     uint8_t     menu_id;
 } t_menu_item;
 

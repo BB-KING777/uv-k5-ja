@@ -44,6 +44,12 @@
 #include "welcome.h"
 
 
+#ifdef ENABLE_LANG_JA
+
+#include "menu_ja.inc"
+
+#else
+
 const t_menu_item MenuList[] =
 {
 //   text,          menu ID
@@ -533,6 +539,8 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
 
 const uint8_t gSubMenu_SIDEFUNCTIONS_size = ARRAY_SIZE(gSubMenu_SIDEFUNCTIONS);
 
+#endif  // ENABLE_LANG_JA
+
 bool    gIsInSubMenu;
 uint8_t gMenuCursor;
 uint8_t gMenuIndices[ARRAY_SIZE(MenuList)]; // Etape 1: table position affichee -> index MenuList (vue courante)
@@ -572,6 +580,21 @@ uint8_t UI_MENU_GetViewPos(uint8_t id)
 // Chaque liste = les menu_id d'une categorie, DANS l'ordre d'affichage voulu
 // (ex. SetPwr colle a Power). CAT_ALL n'a pas de liste : il reprend MenuList
 // tel quel, donc ordre et numeros d'origine preserves.
+#ifdef ENABLE_LANG_JA
+const char *const CategoryNames[CAT_COUNT] = {
+    [CAT_CHANNELS] = "チャンネル",
+    [CAT_SCAN]     = "スキャン",
+    [CAT_KEYS]     = "キー",
+    [CAT_POWER]    = "送信出力",
+    [CAT_DISPLAY]  = "画面表示",
+    [CAT_TIMERS]   = "タイマー",
+    [CAT_AUDIO]    = "音声",
+    [CAT_RADIO]    = "無線",
+    [CAT_DTMF]     = "DTMF",
+    [CAT_SERVICE]  = "調整",
+    [CAT_ALL]      = "すべて",
+};
+#else
 const char *const CategoryNames[CAT_COUNT] = {
     [CAT_CHANNELS] = "Channels",
     [CAT_SCAN]     = "Scan",
@@ -585,6 +608,7 @@ const char *const CategoryNames[CAT_COUNT] = {
     [CAT_SERVICE]  = "Service",
     [CAT_ALL]      = "All",
 };
+#endif
 
 // Les menu_id de sous-features optionnelles sont gardes exactement comme dans
 // l'enum (menu.h) : sur un preset qui ne les compile pas, ils ne sont pas
@@ -726,7 +750,11 @@ static void UI_MENU_DrawCategories(void)
 
     if (count > 1)
         UI_PrintStringSmallNormal(CategoryNames[gCatOrder[prev]], 0, 0, 1);
+#ifdef ENABLE_LANG_JA
+    UI_PrintString(CategoryNames[gCatOrder[cur]], 0, MENU_LIST_WIDTH_PX, 2, 8);
+#else
     UI_PrintString(CategoryNames[gCatOrder[cur]], 0, 0, 2, 8);
+#endif
     if (count > 1)
         UI_PrintStringSmallNormal(CategoryNames[gCatOrder[next]], 0, 0, 4);
 
@@ -915,7 +943,17 @@ void UI_DisplayMenu(void)
                 UI_PrintStringSmallNormal(MenuList[gMenuIndices[prev_index]].name, 0, 0, 1);
 
                 // current menu item - keep big n fat
+#ifdef ENABLE_LANG_JA
+                UI_PrintString(MenuList[gMenuIndices[menu_index]].name, 0, MENU_LIST_WIDTH_PX, 2, 8);
+                // highlight the selected entry: Japanese names are drawn in the
+                // 8 px cell, so size alone no longer marks the cursor
+                for (unsigned int px = 0; px < MENU_LIST_WIDTH_PX; px++) {
+                    gFrameBuffer[2][px] ^= 0xFF;
+                    gFrameBuffer[3][px] ^= 0xFF;
+                }
+#else
                 UI_PrintString(MenuList[gMenuIndices[menu_index]].name, 0, 0, 2, 8);
+#endif
 
                 // trailing menu item - small text
                 int next_index = menu_index + 1;
@@ -935,7 +973,11 @@ void UI_DisplayMenu(void)
             {   
                 // current menu item
 //              strcat(String, ":");
+#ifdef ENABLE_LANG_JA
+                UI_PrintString(MenuList[gMenuIndices[menu_index]].name, 0, MENU_LIST_WIDTH_PX, 0, 8);
+#else
                 UI_PrintString(MenuList[gMenuIndices[menu_index]].name, 0, 0, 0, 8);
+#endif
 //              UI_PrintStringSmallNormal(String, 0, 0, 0);
             }
 
