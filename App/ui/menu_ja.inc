@@ -159,7 +159,9 @@ const t_menu_item MenuList[] =
 #endif
     {"電池校正",        MENU_BATCAL        },
     {"電池種類",        MENU_BATTYP        },
+#ifndef ENABLE_FIXED_NAV_K5
     {"キー方向",        MENU_SET_NAV       },
+#endif
     {"初期化",          MENU_RESET         },
 
     {"",                              0xff               }  // end of list - DO NOT delete or move this this

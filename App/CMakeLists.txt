@@ -152,6 +152,10 @@ enable_feature(ENABLE_LANG_JA
     font_ja_util.c
 )
 
+# Pin the arrow key direction to the UV-K5(8) convention and drop the SetNav
+# menu entry. Only meaningful on a radio that is never a UV-K1.
+enable_feature(ENABLE_FIXED_NAV_K5)
+
 # ---- CUSTOM MODS ----
 
 enable_feature(ENABLE_SPECTRUM

@@ -154,6 +154,17 @@ void SETTINGS_InitEEPROM(void)
     #else
         gEeprom.KEY_LOCK             = (Data[4] <  2) ? Data[4] : false;
     #endif
+    #ifdef ENABLE_FIXED_NAV_K5
+        // This build targets the UV-K5(8), whose arrow keys are UP/DOWN. The
+        // K1 style LEFT/RIGHT inversion is never wanted, so pin the setting
+        // instead of leaving it to a hidden menu entry.
+        //
+        // Forcing it here also side steps an upstream bug: SET_NAV is only
+        // persisted and reloaded inside ENABLE_FEAT_F4HWN_RESCUE_OPS, so on a
+        // build without that feature the setting silently reverts to the K1
+        // default on every power cycle.
+        gEeprom.SET_NAV = true;
+    #endif
     #ifdef ENABLE_VOX
         gEeprom.VOX_SWITCH       = (Data[5] <  2) ? Data[5] : false;
         gEeprom.VOX_LEVEL        = (Data[6] < 10) ? Data[6] : 1;

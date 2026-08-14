@@ -86,7 +86,8 @@
                 "ENABLE_UART_RW_BK_REGS": false,
                 "ENABLE_SWD": false,
                 "VERSION_STRING_1": "v0.22",
-                "VERSION_STRING_2": "v5.9.0"
+                "VERSION_STRING_2": "v5.9.0",
+                "ENABLE_FIXED_NAV_K5": false
             }
         },
         {
@@ -233,7 +234,8 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "ENABLE_LANG_JA": true,
-                "TARGET": "f4hwn.custom.ja"
+                "TARGET": "f4hwn.custom.ja",
+                "ENABLE_FIXED_NAV_K5": true
             }
         },
         {
@@ -243,7 +245,8 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "ENABLE_LANG_JA": true,
-                "TARGET": "f4hwn.fusion.ja"
+                "TARGET": "f4hwn.fusion.ja",
+                "ENABLE_FIXED_NAV_K5": true
             }
         }
     ],
