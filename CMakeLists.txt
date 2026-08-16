@@ -55,6 +55,13 @@ if(ENABLE_FEAT_F4HWN)
     if(NOT AUTHOR_STRING)
         set(AUTHOR_STRING "${AUTHOR_STRING_1}+${AUTHOR_STRING_2}")
     endif()
+    # Upstream release this build is derived from. Shown on the SysInf identity
+    # page so a radio in the field can say what it is based on, which the
+    # NOTICE file alone cannot do.
+    if(NOT BASE_VERSION_STRING)
+        set(BASE_VERSION_STRING "F4HWN 5.9.0")
+    endif()
+    add_compile_definitions("BASE_VERSION_STRING=\"${BASE_VERSION_STRING}\"")
     if(NOT VERSION_STRING)
         set(VERSION_STRING ${VERSION_STRING_2})
     endif()
