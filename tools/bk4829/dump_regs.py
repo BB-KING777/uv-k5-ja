@@ -148,29 +148,82 @@ def read_register(port, reg, debug=False):
     return int.from_bytes(reply[5:7], "little")
 
 
+def list_ports():
+    try:
+        from serial.tools import list_ports as lp
+    except ImportError:
+        return []
+    return list(lp.comports())
+
+
+def open_port(name, attempts=4):
+    """Open the CDC port, retrying through the re-enumeration that a busy or
+    just-reset radio causes (ERROR_SEM_TIMEOUT / port briefly disappearing)."""
+    last = None
+
+    for attempt in range(attempts):
+        try:
+            # Do not touch RTS. Configuring extra control lines on this CDC
+            # implementation is what tends to trigger the semaphore timeout.
+            port = serial.Serial()
+            port.port = name
+            port.baudrate = 38400
+            port.timeout = 0.3
+            port.write_timeout = 1.0
+            port.dsrdtr = False
+            port.rtscts = False
+            port.open()
+            port.dtr = True          # firmware only transmits when DTR is up
+            time.sleep(0.5)
+            return port
+        except Exception as exc:     # noqa: BLE001 - report whatever Windows says
+            last = exc
+            print(f"   接続試行 {attempt + 1}/{attempts} 失敗: {exc}")
+            time.sleep(1.5)
+
+    raise last
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     debug = "--debug" in sys.argv
 
+    ports = list_ports()
+    if ports:
+        print("検出されたシリアルポート:")
+        for p in ports:
+            print(f"  {p.device:<8} {p.description}")
+        print()
+
     if not args:
         sys.exit(__doc__)
 
-    with serial.Serial(args[0], 38400, timeout=0.2) as port:
-        # The firmware only transmits when DTR is asserted
-        # (cdc_acm_data_send_with_dtr() in App/usb/usbd_cdc_if.c), so make sure
-        # the line is up before expecting any reply.
-        port.dtr = True
-        port.rts = True
-        time.sleep(0.4)
+    if ports and not any(p.device.upper() == args[0].upper() for p in ports):
+        print(f"※ {args[0]} は今このPCに存在しません。上の一覧から選び直してください。")
+        print("  無線機のUSBを挿し直すと復活することがあります。")
+        return
 
+    port = open_port(args[0])
+
+    with port:
         print("無線機と接続中 ...", end=" ", flush=True)
-        if hello(port, debug) is None:
+
+        reply = None
+        for _ in range(3):
+            reply = hello(port, debug)
+            if reply is not None:
+                break
+            time.sleep(0.4)
+
+        if reply is None:
             print("応答なし")
             print()
             print("チェック項目:")
             print("  - ポート番号は合っているか")
             print("  - REGDUMP版のファームを焼いたか")
-            print("  - 無線機の電源が入っているか、他のソフトがポートを掴んでいないか")
+            print("  - ★ UV Studio を開いた Chrome のタブが残っていないか")
+            print("    （WebSerial はタブを閉じるまでポートを掴み続けます）")
+            print("  - 充電専用ではなくデータ用の USB-C ケーブルか")
             print("  - --debug を付けて再実行すると受信生データが出ます")
             return
         print("OK")
