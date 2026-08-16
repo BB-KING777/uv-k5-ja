@@ -1,10 +1,9 @@
-# JA-K5 — UV-K5(8) V3 / UV-K1 日本語ファームウェア
+# 日本語UI の実装ノート
 
-armel/uv-k1-k5v3-firmware-custom（F4HWN Edition Fusion）の **v5.9.0** を基に、
-日本語UI・SI4732 短波受信・BK4829 レジスタ表示を追加したものです。
-本体の「本体情報」画面に派生元のバージョン（`F4HWN 5.9.0`）が出ます。
+プロジェクトの概要・警告・ビルド方法は [README.md](README.md) を参照してください。
+ここは `ENABLE_LANG_JA` の中身の説明です。
 
-## 日本語UI (ENABLE_LANG_JA)
+## 何が日本語になるか（ENABLE_LANG_JA）
 
 F4HWN (UV-K1 / UV-K5 V3 = PY32F071版) のメニューを日本語表示にするビルドオプションです。
 本家のリソースには手を入れず、`ENABLE_LANG_JA` を OFF にすれば従来どおり英語で
