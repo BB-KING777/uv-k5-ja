@@ -78,30 +78,44 @@ def frame(payload):
 def frames(raw):
     """Yield every valid frame in the buffer.
 
-    The radio can have other traffic in flight (K5Viewer screen mirroring,
-    for one), so scanning only the first AB CD is not enough - the reply we
-    want may be the second or third frame in the buffer.
+    Framing:  AB CD | size(LE16) | payload(size) XOR-obfuscated | 2 bytes | DC BA
+
+    Those two trailing bytes are NOT a CRC on the way back. SendReply_VCP()
+    in App/app/uart.c writes  Obfuscation[size % 16] ^ 0xFF  there, i.e. a
+    plain 0xFFFF placeholder once de-obfuscated. Only commands going TO the
+    radio carry a real CRC-16, because UART_IsCommandAvailable() checks it.
+    Validating replies against a CRC therefore throws away every single one.
     """
     pos = 0
     while True:
         start = raw.find(b"\xAB\xCD", pos)
-        if start < 0 or len(raw) < start + 8:
+        if start < 0:
             return
 
         pos = start + 2
+        if len(raw) < start + 8:
+            return
+
         size = int.from_bytes(raw[start + 2:start + 4], "little")
         if size > 512:
             continue
 
-        body = bytearray(raw[start + 4:start + 4 + size + 2])
-        if len(body) < size + 2:
+        end = start + 4 + size + 2
+        if len(raw) < end + 2:
             continue
 
+        if raw[end:end + 2] != b"\xDC\xBA":      # footer ID 0xBADC
+            continue
+
+        body = bytearray(raw[start + 4:end])
         for i in range(len(body)):
             body[i] ^= OBFUSCATION[i % 16]
 
         payload = bytes(body[:size])
-        if crc16(payload) == int.from_bytes(body[size:size + 2], "little"):
+        trailer = int.from_bytes(body[size:size + 2], "little")
+
+        # accept the reply placeholder, and also a genuine CRC
+        if trailer == 0xFFFF or trailer == crc16(payload):
             yield payload
 
 
