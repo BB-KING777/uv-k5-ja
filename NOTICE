@@ -75,3 +75,19 @@ and attribution notices, and NOTICE files.
 Attribution in this file does not imply endorsement by Dual Tachyon,
 OneOfEleven, fagci, Egzumer, muzkr, Armel / F4HWN or any other
 contributor.
+
+--------------------------------------------------------------------------------
+
+This distribution additionally bundles the Misaki Gothic 8x8 bitmap font
+(tools/lang_ja/misaki_gothic.bdf, and the glyph subset generated from it in
+App/font_ja.c), used by the ENABLE_LANG_JA Japanese user interface.
+
+  Misaki font  Copyright (c) Num Kadoma
+  https://littlelimit.net/misaki.htm
+
+  "These fonts are free softwares. Unlimited permission is granted to use,
+   copy, and distribute it, with or without modification, either commercially
+   and noncommercially. THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY."
+
+The font is not covered by the Apache License 2.0 that applies to the rest of
+this work; it is redistributed under its own terms as quoted above.
