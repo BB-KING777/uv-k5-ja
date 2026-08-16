@@ -170,31 +170,36 @@ def list_ports():
     return list(lp.comports())
 
 
-def open_port(name, attempts=4):
-    """Open the CDC port, retrying through the re-enumeration that a busy or
-    just-reset radio causes (ERROR_SEM_TIMEOUT / port briefly disappearing)."""
+def open_port(name, attempts=3):
+    """Open the CDC port.
+
+    Keep this as close to a bare pyserial open as possible. Setting dsrdtr /
+    rtscts / write_timeout makes pyserial push extra fields through
+    SetCommState, and on this CDC device that call either times out
+    (ERROR_SEM_TIMEOUT) or blocks forever. The plain constructor is the form
+    that has actually been observed to open.
+
+    DTR does not need setting either: pyserial already asserts it on open,
+    which is what the firmware's cdc_acm_data_send_with_dtr() waits for.
+    """
     last = None
 
     for attempt in range(attempts):
         try:
-            # Do not touch RTS. Configuring extra control lines on this CDC
-            # implementation is what tends to trigger the semaphore timeout.
-            port = serial.Serial()
-            port.port = name
-            port.baudrate = 38400
-            port.timeout = 0.3
-            port.write_timeout = 1.0
-            port.dsrdtr = False
-            port.rtscts = False
-            port.open()
-            port.dtr = True          # firmware only transmits when DTR is up
-            time.sleep(0.5)
+            print(f"{name} を開いています ...", end=" ", flush=True)
+            port = serial.Serial(name, 38400, timeout=0.3)
+            print("OK")
+            time.sleep(0.4)
             return port
-        except Exception as exc:     # noqa: BLE001 - report whatever Windows says
+        except Exception as exc:     # noqa: BLE001 - surface whatever Windows says
             last = exc
-            print(f"   接続試行 {attempt + 1}/{attempts} 失敗: {exc}")
+            print("失敗")
+            print(f"   {exc}")
             time.sleep(1.5)
 
+    print()
+    print("ポートを開けませんでした。USB-C を一度抜き差ししてから再実行してください。")
+    print("（前回 Ctrl-C で中断していると、Windows 側にハンドルが残って開けなくなります）")
     raise last
 
 
