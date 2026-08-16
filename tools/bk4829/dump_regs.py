@@ -144,12 +144,37 @@ def transact(port, payload, want_id, timeout=0.6, debug=False):
     return None
 
 
+# The application answers 0x0514 with 0x0515. A radio sitting in flashing mode
+# never does: its bootloader just beacons 0x0518 over and over, and knows none
+# of the application commands.
+REPLY_APP        = 0x0515
+REPLY_BOOTLOADER = 0x0518
+
+
 def hello(port, debug=False):
-    """CMD 0x0514. Every K5 firmware answers this, and it also puts the radio
-    into its serial-config state - the same thing CHIRP does first."""
+    """CMD 0x0514. Returns (reply_id, payload) for whatever frame comes back."""
     payload = (0x0514).to_bytes(2, "little") + (4).to_bytes(2, "little") + \
               (0x12345678).to_bytes(4, "little")
-    return transact(port, payload, 0x0515, timeout=1.0, debug=debug)
+
+    port.reset_input_buffer()
+    port.write(frame(payload))
+    port.flush()
+
+    deadline = time.time() + 1.2
+    buffer = b""
+
+    while time.time() < deadline:
+        chunk = port.read(256)
+        if chunk:
+            buffer += chunk
+        for reply in frames(buffer):
+            return int.from_bytes(reply[:2], "little"), reply
+        time.sleep(0.005)
+
+    if debug and buffer:
+        print(f"   [debug] 受信 {len(buffer)} バイト: {buffer[:64].hex(' ')}")
+
+    return None, None
 
 
 def read_register(port, reg, debug=False):
@@ -227,25 +252,38 @@ def main():
     with port:
         print("無線機と接続中 ...", end=" ", flush=True)
 
-        reply = None
+        reply_id = None
         for _ in range(3):
-            reply = hello(port, debug)
-            if reply is not None:
+            reply_id, _ = hello(port, debug)
+            if reply_id is not None:
                 break
             time.sleep(0.4)
 
-        if reply is None:
+        if reply_id is None:
             print("応答なし")
             print()
             print("チェック項目:")
-            print("  - ポート番号は合っているか")
-            print("  - REGDUMP版のファームを焼いたか")
+            print("  - ポート番号は合っているか（上の一覧を参照）")
             print("  - ★ UV Studio を開いた Chrome のタブが残っていないか")
             print("    （WebSerial はタブを閉じるまでポートを掴み続けます）")
             print("  - 充電専用ではなくデータ用の USB-C ケーブルか")
             print("  - --debug を付けて再実行すると受信生データが出ます")
             return
-        print("OK")
+
+        if reply_id == REPLY_BOOTLOADER:
+            print("ブートローダでした")
+            print()
+            print("無線機が書き込み(フラッシュ)モードのままです。")
+            print("このモードのブートローダは 0x0518 を周期的に送るだけで、")
+            print("レジスタ読み出しを含むアプリのコマンドには一切応答しません。")
+            print()
+            print("対処: PTT を押さずに電源を入れ直し、通常画面が出てから再実行してください。")
+            return
+
+        if reply_id != REPLY_APP:
+            print(f"応答あり(ID 0x{reply_id:04X})")
+        else:
+            print("OK")
 
         values = {}
         for reg in range(0x80):
