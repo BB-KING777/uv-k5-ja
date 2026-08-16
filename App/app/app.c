@@ -31,6 +31,9 @@
 #ifdef ENABLE_SI4732
 #include "app/si4732.h"
 #endif
+#ifdef ENABLE_REG_DUMP_SCREEN
+#include "ui/regdump.h"
+#endif
 #include "app/chFrScanner.h"
 #include "app/dtmf.h"
 #ifdef ENABLE_FLASHLIGHT
@@ -117,6 +120,9 @@ void (*const ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKey
 
 #ifdef ENABLE_FMRADIO
     [DISPLAY_FM] = &FM_ProcessKeys,
+#endif
+#ifdef ENABLE_REG_DUMP_SCREEN
+    [DISPLAY_REGDUMP] = &REGDUMP_ProcessKeys,
 #endif
 #ifdef ENABLE_SI4732
     [DISPLAY_SI4732] = &SI4732APP_ProcessKeys,

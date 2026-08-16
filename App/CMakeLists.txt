@@ -163,6 +163,12 @@ enable_feature(ENABLE_SI4732
     ui/si4732.c
 )
 
+# On-screen BK4829 register dump, for checking the chip against the datasheet
+# without a working CAT link.
+enable_feature(ENABLE_REG_DUMP_SCREEN
+    ui/regdump.c
+)
+
 # ---- CUSTOM MODS ----
 
 enable_feature(ENABLE_SPECTRUM

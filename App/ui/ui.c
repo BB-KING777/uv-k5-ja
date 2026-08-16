@@ -41,6 +41,9 @@
 #ifdef ENABLE_SI4732
 #include "ui/si4732.h"
 #endif
+#ifdef ENABLE_REG_DUMP_SCREEN
+#include "ui/regdump.h"
+#endif
 #include "../misc.h"
 
 GUI_DisplayType_t gScreenToDisplay;
@@ -61,6 +64,9 @@ void (*const UI_DisplayFunctions[])(void) = {
 #endif
 #ifdef ENABLE_SI4732
     [DISPLAY_SI4732] = &UI_DisplaySI4732,
+#endif
+#ifdef ENABLE_REG_DUMP_SCREEN
+    [DISPLAY_REGDUMP] = &UI_DisplayRegDump,
 #endif
 
 #ifdef ENABLE_AIRCOPY

@@ -42,6 +42,10 @@ enum GUI_DisplayType_t
     DISPLAY_SI4732,
 #endif
 
+#ifdef ENABLE_REG_DUMP_SCREEN
+    DISPLAY_REGDUMP,
+#endif
+
     DISPLAY_N_ELEM,
     DISPLAY_INVALID = 0xFFu
 };

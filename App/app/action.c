@@ -18,6 +18,16 @@
 #include <string.h>
 
 #include "app/action.h"
+#ifdef ENABLE_REG_DUMP_SCREEN
+    #include "ui/regdump.h"
+    #include "ui/ui.h"
+
+    static void ACTION_RegDump(void)
+    {
+        gRegDumpPage = 0;
+        gRequestDisplayScreen = DISPLAY_REGDUMP;
+    }
+#endif
 #ifdef ENABLE_SI4732
     #include "app/si4732.h"
     #include "ui/ui.h"
@@ -113,6 +123,10 @@ void (*const action_opt_table[])(void) = {
 
 #ifdef ENABLE_SI4732
     [ACTION_OPT_SI4732] = &ACTION_SI4732,
+#endif
+
+#ifdef ENABLE_REG_DUMP_SCREEN
+    [ACTION_OPT_REGDUMP] = &ACTION_RegDump,
 #endif
 
 #ifdef ENABLE_ALARM

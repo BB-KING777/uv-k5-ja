@@ -139,6 +139,9 @@ enum ACTION_OPT_t {
 #ifdef ENABLE_SI4732
     ACTION_OPT_SI4732,
 #endif
+#ifdef ENABLE_REG_DUMP_SCREEN
+    ACTION_OPT_REGDUMP,
+#endif
     ACTION_OPT_LEN
 };
 

@@ -520,6 +520,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
     {"PTT",             ACTION_OPT_PTT},
     {"WIDE\nNARROW",    ACTION_OPT_WN},
     {"MUTE",            ACTION_OPT_MUTE},
+#ifdef ENABLE_REG_DUMP_SCREEN
+    {"REGDUMP",         ACTION_OPT_REGDUMP},
+#endif
 #ifdef ENABLE_SI4732
     {"SI4732",          ACTION_OPT_SI4732},
 #endif
