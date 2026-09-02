@@ -264,11 +264,11 @@ void SI4732_GetStatus(SI4732_Mode_t mode, SI4732_Status_t *status)
         (mode == SI4732_MODE_FM) ? SI4732_CMD_FM_RSQ_STAT : SI4732_CMD_AM_RSQ_STAT,
         0x00,
     };
-    uint8_t response[8];
+    // AN332: five response bytes after STATUS for AM (0x43), seven for FM
+    // (0x23). Six covers STATUS..RESP5, which is everything we read.
+    uint8_t response[6];
 
-    status->rssi  = 0;
-    status->snr   = 0;
-    status->valid = false;
+    memset(status, 0, sizeof(*status));
 
     if (!gPoweredUp || !si4732_command(cmd, sizeof(cmd)))
         return;
@@ -276,10 +276,16 @@ void SI4732_GetStatus(SI4732_Mode_t mode, SI4732_Status_t *status)
     if (!si4732_response(response, sizeof(response)))
         return;
 
-    // resp1 bit0 = valid, resp4 = RSSI, resp5 = SNR
-    status->valid = (response[1] & 0x01) != 0;
+    // AN332 tables 0x23 / 0x43: RESP2 carries SMUTE, AFCRL and VALID - the
+    // old code read those flags out of RESP1, which is the interrupt byte.
+    // RESP4 is RSSI, RESP5 is SNR, the same layout in both modes.
+    status->valid = (response[2] & 0x01) != 0;
+    status->afcrl = (response[2] & 0x02) != 0;
+    status->smute = (response[2] & 0x08) != 0;
     status->rssi  = response[4];
     status->snr   = response[5];
+
+    memcpy(status->raw, response, sizeof(response));
 }
 
 // ------------------------------------------------------------------ tuning

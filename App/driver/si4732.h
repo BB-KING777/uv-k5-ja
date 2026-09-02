@@ -66,6 +66,9 @@ typedef struct {
     uint8_t  rssi;      // dBuV
     uint8_t  snr;       // dB
     bool     valid;     // chip reports a valid tune
+    bool     smute;     // soft mute engaged
+    bool     afcrl;     // AFC railed
+    uint8_t  raw[6];    // STATUS + RESP1..RESP5, for the diagnostic line
 } SI4732_Status_t;
 
 bool SI4732_Detect(void);

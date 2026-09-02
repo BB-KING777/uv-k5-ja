@@ -99,6 +99,13 @@ void UI_DisplaySI4732(void)
     sprintf(string, "%udBuV  S/N %u", gSI4732Status.rssi, gSI4732Status.snr);
     UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 6);
 
+    // Diagnostic: the raw RSQ response, so a stuck reading can be traced back
+    // to the chip rather than guessed at.
+    sprintf(string, "%02X %02X %02X %02X %02X %02X",
+            gSI4732Status.raw[0], gSI4732Status.raw[1], gSI4732Status.raw[2],
+            gSI4732Status.raw[3], gSI4732Status.raw[4], gSI4732Status.raw[5]);
+    UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 7);
+
     ST7565_BlitFullScreen();
 }
 
