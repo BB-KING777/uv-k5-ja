@@ -70,6 +70,16 @@ bool            gSI4732Present;
 
 static uint8_t gPollDivider;
 
+// Seek state. The chip does the walking; this just starts it, waits, and
+// gives up if it never reports back.
+bool           gSI4732Seeking;
+static bool    gSeekUp;
+static uint16_t gSeekTicks;
+
+#define SI4732_SEEK_TIMEOUT_TICKS 2500   // 25 s at one tick per 10 ms
+
+static void seek_poll(void);
+
 static uint8_t step_index_for(uint32_t step_hz)
 {
     // Match the table value exactly. An earlier "* 10" fallback matched a
@@ -182,6 +192,11 @@ void SI4732APP_Init(void)
 
 void SI4732APP_Stop(void)
 {
+    if (gSI4732Seeking) {
+        SI4732_SeekCancel(gSI4732Mode);
+        gSI4732Seeking = false;
+    }
+
     if (gSI4732Present)
         SI4732_PowerDown();
 
@@ -192,6 +207,11 @@ void SI4732APP_Poll(void)
 {
     if (!gSI4732Present)
         return;
+
+    if (gSI4732Seeking) {
+        seek_poll();
+        return;
+    }
 
     // The RSQ read is a two transaction I2C round trip, so it runs at about
     // 5 Hz rather than on every 20 ms display tick.
@@ -257,6 +277,63 @@ static void si4732_cycle_mode(void)
     si4732_apply();
 }
 
+static void seek_stop(void)
+{
+    if (!gSI4732Seeking)
+        return;
+
+    SI4732_SeekCancel(gSI4732Mode);
+    gSI4732Seeking = false;
+    si4732_apply();
+    gUpdateDisplay = true;
+}
+
+static void seek_start(bool up)
+{
+    const SI4732_Band_t *band = &gSI4732Bands[gSI4732Band];
+
+    if (gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB)
+        return;   // the chip has no SSB seek
+
+    gSeekUp    = up;
+    gSeekTicks = 0;
+
+    gSI4732Seeking = SI4732_SeekStart(gSI4732Mode, up, band->low_hz,
+                                      band->high_hz, SI4732APP_StepHz());
+    gUpdateDisplay = true;
+}
+
+static void seek_poll(void)
+{
+    uint32_t found      = 0;
+    bool     band_limit = false;
+
+    if (++gSeekTicks > SI4732_SEEK_TIMEOUT_TICKS) {
+        seek_stop();
+        return;
+    }
+
+    if (!SI4732_SeekPoll(gSI4732Mode, &found, &band_limit))
+        return;
+
+    gSI4732Seeking = false;
+
+    if (found >= gSI4732Bands[gSI4732Band].low_hz &&
+        found <= gSI4732Bands[gSI4732Band].high_hz)
+        gSI4732Frequency = found;
+
+    // Hitting the band edge is the end of the run, not a station.
+    if (band_limit)
+        si4732_apply();
+
+    gUpdateDisplay = true;
+}
+
+bool SI4732APP_SeekDirectionUp(void)
+{
+    return gSeekUp;
+}
+
 static void si4732_apply_entry(void)
 {
     uint32_t khz = 0;
@@ -290,8 +367,21 @@ static void si4732_apply_entry(void)
 
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
+    // A held up or down key starts a seek, acted on at release so it fires
+    // once. Anything else pressed while seeking just stops it.
+    if (!bKeyPressed && bKeyHeld && !gSI4732Seeking && gSI4732Present &&
+        (Key == KEY_UP || Key == KEY_DOWN)) {
+        seek_start(Key == KEY_UP);
+        return;
+    }
+
     if (!bKeyPressed || bKeyHeld)
         return;
+
+    if (gSI4732Seeking) {
+        seek_stop();
+        return;
+    }
 
     if (Key <= KEY_9) {  // KEY_0 is 0, so the digits are the low end of the enum
         if (gEntryLen < SI4732_ENTRY_MAX) {

@@ -29,9 +29,11 @@
 #define SI4732_CMD_GET_PROPERTY 0x13
 #define SI4732_CMD_GET_INT_STAT 0x14
 #define SI4732_CMD_FM_TUNE_FREQ 0x20
+#define SI4732_CMD_FM_SEEK_START 0x21
 #define SI4732_CMD_FM_TUNE_STAT 0x22
 #define SI4732_CMD_FM_RSQ_STAT  0x23
 #define SI4732_CMD_AM_TUNE_FREQ 0x40
+#define SI4732_CMD_AM_SEEK_START 0x41
 #define SI4732_CMD_AM_TUNE_STAT 0x42
 #define SI4732_CMD_AM_RSQ_STAT  0x43
 
@@ -46,6 +48,16 @@
 #define SI4732_PROP_AM_CHANNEL_FILTER       0x3102
 #define SI4732_PROP_AM_AVC_MAX_GAIN         0x3103
 #define SI4732_PROP_AM_SOFT_MUTE_MAX_ATT    0x3302
+#define SI4732_PROP_FM_SEEK_BAND_BOTTOM     0x1400
+#define SI4732_PROP_FM_SEEK_BAND_TOP        0x1401
+#define SI4732_PROP_FM_SEEK_FREQ_SPACING    0x1402
+#define SI4732_PROP_FM_SEEK_SNR_THRESHOLD   0x1403
+#define SI4732_PROP_FM_SEEK_RSSI_THRESHOLD  0x1404
+#define SI4732_PROP_AM_SEEK_BAND_BOTTOM     0x3400
+#define SI4732_PROP_AM_SEEK_BAND_TOP        0x3401
+#define SI4732_PROP_AM_SEEK_FREQ_SPACING    0x3402
+#define SI4732_PROP_AM_SEEK_SNR_THRESHOLD   0x3403
+#define SI4732_PROP_AM_SEEK_RSSI_THRESHOLD  0x3404
 #define SI4732_PROP_RX_VOLUME               0x4000
 #define SI4732_PROP_RX_HARD_MUTE            0x4001
 
@@ -76,6 +88,14 @@ bool SI4732_PowerUp(SI4732_Mode_t mode);
 void SI4732_PowerDown(void);
 void SI4732_SetProperty(uint16_t property, uint16_t value);
 bool SI4732_Tune(SI4732_Mode_t mode, uint32_t freq_hz);
+
+// Hardware seek. Start it, then poll until it reports completion; the chip
+// walks the band on its own and stops on the first channel that meets the
+// RSSI and SNR thresholds.
+bool SI4732_SeekStart(SI4732_Mode_t mode, bool up,
+                      uint32_t low_hz, uint32_t high_hz, uint32_t spacing_hz);
+bool SI4732_SeekPoll(SI4732_Mode_t mode, uint32_t *freq_hz, bool *band_limit);
+void SI4732_SeekCancel(SI4732_Mode_t mode);
 void SI4732_GetStatus(SI4732_Mode_t mode, SI4732_Status_t *status);
 void SI4732_SetVolume(uint8_t volume);
 void SI4732_SetMute(bool mute);

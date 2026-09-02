@@ -35,6 +35,9 @@ extern uint8_t         gSI4732StepIndex;
 extern int16_t         gSI4732Bfo;
 extern SI4732_Status_t gSI4732Status;
 extern bool            gSI4732Present;
+extern bool            gSI4732Seeking;
+
+bool SI4732APP_SeekDirectionUp(void);
 
 void SI4732APP_Init(void);
 void SI4732APP_Stop(void);

@@ -267,6 +267,104 @@ bool SI4732_Tune(SI4732_Mode_t mode, uint32_t freq_hz)
     return si4732_command(cmd, length);
 }
 
+// ------------------------------------------------------------------- seek
+
+bool SI4732_SeekStart(SI4732_Mode_t mode, bool up,
+                      uint32_t low_hz, uint32_t high_hz, uint32_t spacing_hz)
+{
+    const bool fm = (mode == SI4732_MODE_FM);
+
+    if (!gPoweredUp)
+        return false;
+
+    // FM works in 10 kHz units, AM in 1 kHz. AN332 only accepts 1, 5, 9 or
+    // 10 kHz AM spacing and 5, 10 or 20 (x10 kHz) for FM, so anything else is
+    // rounded to the nearest legal value rather than silently rejected.
+    uint16_t spacing;
+
+    if (fm) {
+        spacing = (uint16_t)(spacing_hz / 10000u);
+        if (spacing < 5)       spacing = 5;
+        else if (spacing < 10) spacing = 10;
+        else if (spacing > 20) spacing = 20;
+    } else {
+        spacing = (uint16_t)(spacing_hz / 1000u);
+        if (spacing == 0)      spacing = 1;
+        else if (spacing < 5)  spacing = 1;
+        else if (spacing < 9)  spacing = 5;
+        else if (spacing < 10) spacing = 9;
+        else                   spacing = 10;
+    }
+
+    const uint32_t unit = fm ? 10000u : 1000u;
+
+    SI4732_SetProperty(fm ? SI4732_PROP_FM_SEEK_BAND_BOTTOM
+                          : SI4732_PROP_AM_SEEK_BAND_BOTTOM,
+                       (uint16_t)(low_hz / unit));
+    SI4732_SetProperty(fm ? SI4732_PROP_FM_SEEK_BAND_TOP
+                          : SI4732_PROP_AM_SEEK_BAND_TOP,
+                       (uint16_t)(high_hz / unit));
+    SI4732_SetProperty(fm ? SI4732_PROP_FM_SEEK_FREQ_SPACING
+                          : SI4732_PROP_AM_SEEK_FREQ_SPACING, spacing);
+
+    // WRAP is off: stopping at the band edge is easier to reason about than
+    // a seek that quietly laps the band forever.
+    const uint8_t arg1 = up ? 0x08 : 0x00;
+
+    if (fm) {
+        const uint8_t cmd[2] = { SI4732_CMD_FM_SEEK_START, arg1 };
+        return si4732_command(cmd, sizeof(cmd));
+    }
+
+    const uint8_t cmd[6] = { SI4732_CMD_AM_SEEK_START, arg1, 0, 0,
+                             0x00, (uint8_t)antcap_for(low_hz) };
+    return si4732_command(cmd, sizeof(cmd));
+}
+
+bool SI4732_SeekPoll(SI4732_Mode_t mode, uint32_t *freq_hz, bool *band_limit)
+{
+    const uint8_t  int_cmd = SI4732_CMD_GET_INT_STAT;
+    uint8_t        status  = 0;
+
+    if (!si4732_command(&int_cmd, 1) || !si4732_response(&status, 1))
+        return false;
+
+    if (!(status & 0x01))   // STCINT
+        return false;
+
+    // Reading tune status with INTACK clears the interrupt for the next seek.
+    const bool    fm = (mode == SI4732_MODE_FM);
+    const uint8_t cmd[2] = {
+        fm ? SI4732_CMD_FM_TUNE_STAT : SI4732_CMD_AM_TUNE_STAT, 0x01,
+    };
+    uint8_t response[4];
+
+    if (!si4732_command(cmd, sizeof(cmd)) ||
+        !si4732_response(response, sizeof(response)))
+        return false;
+
+    const uint16_t read = (uint16_t)((response[2] << 8) | response[3]);
+
+    *band_limit = (response[1] & 0x80) != 0;   // BLTF
+    *freq_hz    = (uint32_t)read * (fm ? 10000u : 1000u);
+
+    return true;
+}
+
+void SI4732_SeekCancel(SI4732_Mode_t mode)
+{
+    // AM_TUNE_STATUS / FM_TUNE_STATUS ARG1 bit1 aborts a seek in progress.
+    const uint8_t cmd[2] = {
+        (mode == SI4732_MODE_FM) ? SI4732_CMD_FM_TUNE_STAT
+                                 : SI4732_CMD_AM_TUNE_STAT,
+        0x03,
+    };
+    uint8_t response[4];
+
+    if (si4732_command(cmd, sizeof(cmd)))
+        si4732_response(response, sizeof(response));
+}
+
 void SI4732_GetStatus(SI4732_Mode_t mode, SI4732_Status_t *status)
 {
     const uint8_t cmd[2] = {

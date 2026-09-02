@@ -80,6 +80,15 @@ void UI_DisplaySI4732(void)
 
     UI_PrintString(string, 0, LCD_WIDTH, 2, 8);
 
+    if (gSI4732Seeking) {
+        UI_PrintStringSmallNormal(SI4732APP_SeekDirectionUp() ? "スキャン中 ↑"
+                                                             : "スキャン中 ↓",
+                                  0, LCD_WIDTH, 4);
+        UI_PrintStringSmallNormal("どれか押すと停止", 0, LCD_WIDTH, 5);
+        ST7565_BlitFullScreen();
+        return;
+    }
+
     // Tuning step, or the BFO offset when SSB is doing something with it.
     // Right aligned on its own line so it can never collide with the signal
     // report below - the two used to overlap once the numbers got wide.
