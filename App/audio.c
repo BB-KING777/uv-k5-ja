@@ -51,6 +51,40 @@ static const uint16_t BEEP_Classic_array[][3] = { /* Tone    Duration    Repeats
 
 BEEP_Type_t gBeepToPlay = BEEP_NONE;
 
+#ifdef ENABLE_FEAT_F4HWN
+// Start-up chime. The tone generator takes an arbitrary frequency, so the
+// table below is the only thing that decides how this sounds - change the
+// numbers and you change the tune. A rising D major arpeggio, last note held.
+static const uint16_t kBootChime[][2] = {  // Hz, ms
+    {  587,  70 },   // D5
+    {  740,  70 },   // F#5
+    {  880,  70 },   // A5
+    { 1175, 240 },   // D6
+};
+
+void AUDIO_PlayBootChime(void)
+{
+    AUDIO_AudioPathOff();
+
+    BK4819_PrepareToPlayTone(true);
+    SYSTEM_DelayMs(2);
+
+    AUDIO_AudioPathOn();
+    SYSTEM_DelayMs(20);
+
+    for (uint8_t i = 0; i < ARRAY_SIZE(kBootChime); i++) {
+        BK4819_PlayToneRaw(kBootChime[i][0], kBootChime[i][1]);
+        SYSTEM_DelayMs(12);   // a short gap so the notes are separate
+    }
+
+    AUDIO_AudioPathOff();
+
+    SYSTEM_DelayMs(5);
+    BK4819_TurnsOffTones_TurnsOnRX();
+    SYSTEM_DelayMs(5);
+}
+#endif
+
 void AUDIO_PlayBeep(BEEP_Type_t Beep)
 {
     if (Beep == BEEP_NONE)

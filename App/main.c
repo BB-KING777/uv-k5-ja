@@ -213,6 +213,13 @@ void Main(void)
         BACKLIGHT_TurnOn();
 
 #ifdef ENABLE_FEAT_F4HWN
+        // POWER_ON_DISPLAY_MODE_SOUND asks for a start-up sound and until now
+        // there was none - it only suppressed the screen.
+        if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE)
+            AUDIO_PlayBootChime();
+#endif
+
+#ifdef ENABLE_FEAT_F4HWN
         if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE && gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_SOUND)
 #else
         if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE)

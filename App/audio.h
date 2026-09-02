@@ -51,6 +51,9 @@ typedef enum BEEP_Type_t BEEP_Type_t;
 extern BEEP_Type_t       gBeepToPlay;
 
 void AUDIO_PlayBeep(BEEP_Type_t Beep);
+#ifdef ENABLE_FEAT_F4HWN
+void AUDIO_PlayBootChime(void);
+#endif
 
 #define AUDIO_AudioPathOn() GPIO_EnableAudioPath()
 
