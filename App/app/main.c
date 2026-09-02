@@ -25,6 +25,9 @@
 #endif
 #include "app/generic.h"
 #include "app/main.h"
+#ifdef ENABLE_SI4732
+    #include "app/si4732.h"
+#endif
 #include "app/scanner.h"
 
 #ifdef ENABLE_SPECTRUM
@@ -445,6 +448,42 @@ void channelMoveSwitch(void) {
     }
 }
 
+#ifdef ENABLE_SI4732
+// Tune the transceiver from a plain frequency in Hz. Used when the Si4732
+// screen is handed a number the Si4732 cannot reach. Returns false when the
+// BK4819 cannot reach it either.
+bool MAIN_TuneHz(uint32_t hz)
+{
+    const uint32_t freq = hz / 10u;   // the radio counts in 10 Hz units
+
+    if (freq < frequencyBandTable[0].lower ||
+        freq > frequencyBandTable[BAND_N_ELEM - 1].upper)
+        return false;
+
+    if (freq >= BX4819_band1.upper && freq < BX4819_band2.lower)
+        return false;   // the gap between the two receiver bands
+
+    const uint8_t          vfo  = gEeprom.TX_VFO;
+    const FREQUENCY_Band_t band = FREQUENCY_GetBand(freq);
+
+    if (gTxVfo->Band != band) {
+        gTxVfo->Band               = band;
+        gEeprom.ScreenChannel[vfo] = band + FREQ_CHANNEL_FIRST;
+        gEeprom.FreqChannel[vfo]   = band + FREQ_CHANNEL_FIRST;
+
+        SETTINGS_SaveVfoIndices();
+        RADIO_ConfigureChannel(vfo, VFO_CONFIGURE_RELOAD);
+    }
+
+    gTxVfo->freq_config_RX.Frequency =
+        FREQUENCY_RoundToStep(freq, gTxVfo->StepFrequency);
+
+    gRequestSaveChannel = 1;
+
+    return true;
+}
+#endif
+
 static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (bKeyHeld) { // key held down
@@ -616,6 +655,15 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
             // clamp the frequency entered to some valid value
             if (Frequency < frequencyBandTable[0].lower) {
+#ifdef ENABLE_SI4732
+                // Below what the BK4819 can reach is the Si4732's territory.
+                // Hand the number over rather than dragging it up to the
+                // transceiver's lowest band.
+                if (SI4732APP_TakeOver((uint32_t)Frequency * 10u)) {
+                    gRequestDisplayScreen = DISPLAY_SI4732;
+                    return;
+                }
+#endif
                 Frequency = frequencyBandTable[0].lower;
             }
             else if (Frequency >= BX4819_band1.upper && Frequency < BX4819_band2.lower) {

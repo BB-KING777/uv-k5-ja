@@ -32,6 +32,7 @@ extern uint32_t        gSI4732Frequency;
 extern SI4732_Mode_t   gSI4732Mode;
 extern uint8_t         gSI4732Bandwidth;
 extern uint8_t         gSI4732StepIndex;
+extern uint8_t         gSI4732Agc;
 extern int16_t         gSI4732Bfo;
 extern SI4732_Status_t gSI4732Status;
 extern bool            gSI4732Present;
@@ -46,7 +47,10 @@ void SI4732APP_HoldAudio(void);
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
 
 const char *SI4732APP_EntryText(void);
+const char *SI4732APP_AgcName(void);
 const char *SI4732APP_ModeName(void);
+bool        SI4732APP_CanTune(uint32_t hz);
+bool        SI4732APP_TakeOver(uint32_t hz);
 const char *SI4732APP_BandwidthName(void);
 uint32_t    SI4732APP_StepHz(void);
 

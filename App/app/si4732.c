@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "app/main.h"
 #include "app/si4732.h"
 #include "audio.h"
 #include "driver/bk1080.h"
@@ -20,33 +21,48 @@
 // narrower than the ITU region 3 ones, so the edges match what is legal to
 // listen for and transmit on here.
 const SI4732_Band_t gSI4732Bands[] = {
-    { "LW",    153000,    279000,    198000, 1000, SI4732_MODE_AM  },
-    { "MW",    522000,   1710000,    810000, 9000, SI4732_MODE_AM  },
-    { "160m", 1800000,   1875000,   1810000, 1000, SI4732_MODE_LSB },
-    { "120m", 2300000,   2495000,   2400000, 5000, SI4732_MODE_AM  },
-    { "90m",  3200000,   3400000,   3300000, 5000, SI4732_MODE_AM  },
-    { "80m",  3500000,   3805000,   3537000, 1000, SI4732_MODE_LSB },
-    { "75m",  3900000,   4000000,   3950000, 5000, SI4732_MODE_AM  },
-    { "60m",  4750000,   5060000,   4900000, 5000, SI4732_MODE_AM  },
-    { "49m",  5800000,   6200000,   6000000, 5000, SI4732_MODE_AM  },
-    { "40m",  7000000,   7200000,   7100000, 1000, SI4732_MODE_LSB },
-    { "41m",  7200000,   7600000,   7300000, 5000, SI4732_MODE_AM  },
-    { "31m",  9200000,   9990000,   9600000, 5000, SI4732_MODE_AM  },
-    { "30m", 10100000,  10150000,  10120000, 1000, SI4732_MODE_USB },
-    { "25m", 11600000,  12200000,  11800000, 5000, SI4732_MODE_AM  },
-    { "22m", 13570000,  13870000,  13700000, 5000, SI4732_MODE_AM  },
-    { "20m", 14000000,  14350000,  14100000, 1000, SI4732_MODE_USB },
-    { "19m", 15100000,  15830000,  15400000, 5000, SI4732_MODE_AM  },
-    { "17m", 18068000,  18168000,  18100000, 1000, SI4732_MODE_USB },
-    { "16m", 17480000,  17900000,  17600000, 5000, SI4732_MODE_AM  },
-    { "15m", 21000000,  21450000,  21200000, 1000, SI4732_MODE_USB },
-    { "13m", 21450000,  21850000,  21600000, 5000, SI4732_MODE_AM  },
-    // AN332 puts the top of AM_TUNE_FREQ at 23 MHz, so 12 m, 11 m and 10 m
-    // were in the table but unreachable. 13 m is the last band that tunes.
-    { "FM",  76000000, 108000000,  80000000,  100, SI4732_MODE_FM  },
+    // Ordered so that a narrow band is matched before the wide one it sits
+    // inside: band_for() takes the first hit. Amateur edges are the Japanese
+    // allocations, and the broadcast segments are the ones that actually carry
+    // something receivable here.
+    { "LW",     153000,    279000,    198000, 1000, SI4732_MODE_AM  },
+    { "MW",     522000,   1710000,    594000, 9000, SI4732_MODE_AM  },  // 9 kHz raster
+    { "120m",  2300000,   2495000,   2400000, 5000, SI4732_MODE_AM  },
+    { "90m",   3200000,   3400000,   3300000, 5000, SI4732_MODE_AM  },
+    { "JMH1",  3620000,   3625000,   3622500, 1000, SI4732_MODE_USB },  // 気象FAX 3622.5
+    { "80mHam",3500000,   3805000,   3537000, 1000, SI4732_MODE_LSB },
+    { "75m",   3900000,   4000000,   3925000, 5000, SI4732_MODE_AM  },  // ラジオNIKKEI
+    { "4MMar", 4000000,   4438000,   4200000, 1000, SI4732_MODE_USB },
+    { "60m",   4750000,   5060000,   4900000, 5000, SI4732_MODE_AM  },
+    { "5MAir", 5450000,   5730000,   5628000, 1000, SI4732_MODE_USB },  // 洋上管制
+    { "49m",   5800000,   6200000,   6055000, 5000, SI4732_MODE_AM  },  // ラジオNIKKEI
+    { "6MMar", 6200000,   6525000,   6350000, 1000, SI4732_MODE_USB },
+    { "6MAir", 6525000,   6765000,   6655000, 1000, SI4732_MODE_USB },
+    { "40mHam",7000000,   7200000,   7100000, 1000, SI4732_MODE_LSB },
+    { "41m",   7200000,   7600000,   7300000, 5000, SI4732_MODE_AM  },
+    { "JMH2",  7793000,   7798000,   7795000, 1000, SI4732_MODE_USB },  // 気象FAX 7795
+    { "8MMar", 8100000,   8815000,   8400000, 1000, SI4732_MODE_USB },
+    { "8MAir", 8815000,   9040000,   8951000, 1000, SI4732_MODE_USB },
+    { "31m",   9200000,   9990000,   9595000, 5000, SI4732_MODE_AM  },  // ラジオNIKKEI
+    { "TIME",  9990000,  10010000,  10000000, 1000, SI4732_MODE_AM  },  // WWV / WWVH
+    { "30mHam",10100000, 10150000,  10120000, 1000, SI4732_MODE_USB },
+    { "11MAir",11175000, 11400000,  11330000, 1000, SI4732_MODE_USB },
+    { "25m",  11600000,  12100000,  11800000, 5000, SI4732_MODE_AM  },
+    { "12MMar",12230000, 13200000,  12600000, 1000, SI4732_MODE_USB },
+    { "13MAir",13200000, 13360000,  13300000, 1000, SI4732_MODE_USB },
+    { "22m",  13570000,  13870000,  13700000, 5000, SI4732_MODE_AM  },
+    { "JMH3", 13986000,  13991000,  13988500, 1000, SI4732_MODE_USB },  // 気象FAX 13988.5
+    { "20mHam",14000000, 14350000,  14100000, 1000, SI4732_MODE_USB },
+    { "19m",  15100000,  15830000,  15400000, 5000, SI4732_MODE_AM  },
+    { "16MMar",16360000, 17410000,  16800000, 1000, SI4732_MODE_USB },
+    { "16m",  17480000,  17900000,  17600000, 5000, SI4732_MODE_AM  },
+    { "17mHam",18068000, 18168000,  18100000, 1000, SI4732_MODE_USB },
+    { "15mHam",21000000, 21450000,  21200000, 1000, SI4732_MODE_USB },
+    { "13m",  21450000,  21850000,  21600000, 5000, SI4732_MODE_AM  },
+    { "FM",   76000000, 108000000,  80000000,  100, SI4732_MODE_FM  },
     // Catch all, last on purpose: keyed in frequencies that fall outside every
-    // named band land here so the radio still tunes them.
-    { "SW",    150000,  23000000,   6055000, 5000, SI4732_MODE_AM  },
+    // named band land here. AM_TUNE_FREQ stops at 23 MHz.
+    { "SW",     150000,  23000000,   6055000, 5000, SI4732_MODE_AM  },
 };
 
 const uint8_t gSI4732BandCount = ARRAY_SIZE(gSI4732Bands);
@@ -54,6 +70,22 @@ const uint8_t gSI4732BandCount = ARRAY_SIZE(gSI4732Bands);
 static const uint16_t kSteps[] = { 10, 50, 100, 500, 1000, 5000, 9000, 10000 };
 
 static const char *const kModeNames[] = { "FM", "AM", "LSB", "USB" };
+
+// Sensitivity, built on AM_AGC_OVERRIDE (AN332 command 0x48): index 0 is
+// minimum attenuation, 37 is maximum. AUTO leaves the chip's own AGC alone,
+// which is right on a whip and wrong on an outdoor antenna with a strong
+// local carrier in band.
+static const struct {
+    const char *name;
+    bool        manual;
+    uint8_t     attenuation;
+} kAgc[] = {
+    { "AUTO", false,  0 },
+    { "DX",   true,   0 },   // hold maximum gain, for weak signals
+    { "NOR",  true,  12 },
+    { "LOC",  true,  26 },   // local, strong signal territory
+    { "ATT",  true,  37 },   // maximum attenuation
+};
 
 static const char *const kBandwidthNames[] = {
     "6.0k", "4.0k", "3.0k", "2.5k", "2.0k", "1.8k", "1.0k",
@@ -64,6 +96,7 @@ uint32_t        gSI4732Frequency;
 SI4732_Mode_t   gSI4732Mode;
 uint8_t         gSI4732Bandwidth;
 uint8_t         gSI4732StepIndex;
+uint8_t         gSI4732Agc;
 int16_t         gSI4732Bfo;
 SI4732_Status_t gSI4732Status;
 bool            gSI4732Present;
@@ -135,13 +168,45 @@ static uint8_t band_for(uint32_t hz)
     return band_all();
 }
 
+const char *SI4732APP_AgcName(void)
+{
+    return kAgc[gSI4732Agc].name;
+}
+
+static void si4732_apply_agc(void)
+{
+    if (gSI4732Mode == SI4732_MODE_FM)
+        return;   // 0x48 is the AM side only
+
+    SI4732_SetAgcOverride(kAgc[gSI4732Agc].manual, kAgc[gSI4732Agc].attenuation);
+}
+
 static void si4732_apply(void)
 {
     SI4732_Tune(gSI4732Mode, gSI4732Frequency);
     SI4732_SetBandwidth(gSI4732Mode, gSI4732Bandwidth);
+    si4732_apply_agc();
 
     if (gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB)
         SI4732_SetBfo(gSI4732Bfo);
+}
+
+static void si4732_set_frequency(uint32_t hz)
+{
+    const uint8_t band = band_for(hz);
+
+    gSI4732Band      = band;
+    gSI4732Mode      = gSI4732Bands[band].mode;
+    gSI4732StepIndex = step_index_for(gSI4732Bands[band].step_hz);
+    gSI4732Bfo       = 0;
+
+    if ((gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB) &&
+        !SI4732_PatchAvailable())
+        gSI4732Mode = SI4732_MODE_AM;
+
+    gSI4732Frequency = hz;
+
+    si4732_apply();
 }
 
 static void si4732_select_band(uint8_t band)
@@ -334,6 +399,39 @@ bool SI4732APP_SeekDirectionUp(void)
     return gSeekUp;
 }
 
+// --------------------------------------------------------- chip hand off
+
+bool SI4732APP_CanTune(uint32_t hz)
+{
+    const SI4732_Band_t *all = &gSI4732Bands[gSI4732BandCount - 1];
+    const SI4732_Band_t *fm  = &gSI4732Bands[gSI4732BandCount - 2];
+
+    return (hz >= all->low_hz && hz <= all->high_hz) ||
+           (hz >= fm->low_hz  && hz <= fm->high_hz);
+}
+
+// Called from the main screen when a keyed in frequency falls below what the
+// BK4819 can reach: the Si4732 takes it instead of the number being clamped
+// up to the transceiver's lowest band.
+bool SI4732APP_TakeOver(uint32_t hz)
+{
+    if (!SI4732APP_CanTune(hz))
+        return false;
+
+    if (gScreenToDisplay != DISPLAY_SI4732) {
+        SI4732APP_Init();
+
+        if (!gSI4732Present)
+            return false;
+    }
+
+    si4732_set_frequency(hz);
+
+    gRequestDisplayScreen = DISPLAY_SI4732;
+
+    return true;
+}
+
 static void si4732_apply_entry(void)
 {
     uint32_t khz = 0;
@@ -344,35 +442,53 @@ static void si4732_apply_entry(void)
     gEntryLen = 0;
     gEntry[0] = 0;
 
-    const uint32_t hz   = khz * 1000u;
-    const uint8_t  band = band_for(hz);
+    const uint32_t hz = khz * 1000u;
 
-    if (band == band_all() &&
-        (hz < gSI4732Bands[band].low_hz || hz > gSI4732Bands[band].high_hz))
-        return;  // outside everything the chip can tune, leave the dial alone
+    if (SI4732APP_CanTune(hz)) {
+        si4732_set_frequency(hz);
+        return;
+    }
 
-    gSI4732Band      = band;
-    gSI4732Mode      = gSI4732Bands[band].mode;
-    gSI4732StepIndex = step_index_for(gSI4732Bands[band].step_hz);
-    gSI4732Bfo       = 0;
-
-    if ((gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB) &&
-        !SI4732_PatchAvailable())
-        gSI4732Mode = SI4732_MODE_AM;
-
-    gSI4732Frequency = hz;
-
-    si4732_apply();
+    // Above the Si4732's 23 MHz ceiling the transceiver is the right radio,
+    // so pass the frequency across instead of refusing it.
+    if (MAIN_TuneHz(hz)) {
+        SI4732APP_Stop();
+        gRequestDisplayScreen = DISPLAY_MAIN;
+    }
 }
 
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     // A held up or down key starts a seek, acted on at release so it fires
     // once. Anything else pressed while seeking just stops it.
-    if (!bKeyPressed && bKeyHeld && !gSI4732Seeking && gSI4732Present &&
-        (Key == KEY_UP || Key == KEY_DOWN)) {
-        seek_start(Key == KEY_UP);
-        return;
+    if (!bKeyPressed && bKeyHeld && !gSI4732Seeking && gSI4732Present) {
+        switch (Key) {
+            case KEY_UP:
+            case KEY_DOWN:
+                seek_start(Key == KEY_UP);
+                return;
+
+            case KEY_STAR:   // band forward
+                si4732_select_band((uint8_t)(gSI4732Band + 1) % gSI4732BandCount);
+                gUpdateDisplay = true;
+                return;
+
+            case KEY_MENU:   // band back
+                si4732_select_band((uint8_t)(gSI4732Band + gSI4732BandCount - 1) %
+                                   gSI4732BandCount);
+                gUpdateDisplay = true;
+                return;
+
+            case KEY_F:      // sensitivity / AGC
+                if (++gSI4732Agc >= ARRAY_SIZE(kAgc))
+                    gSI4732Agc = 0;
+                si4732_apply_agc();
+                gUpdateDisplay = true;
+                return;
+
+            default:
+                break;
+        }
     }
 
     if (!bKeyPressed || bKeyHeld)

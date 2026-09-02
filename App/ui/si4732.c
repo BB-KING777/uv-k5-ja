@@ -92,14 +92,16 @@ void UI_DisplaySI4732(void)
     // Tuning step, or the BFO offset when SSB is doing something with it.
     // Right aligned on its own line so it can never collide with the signal
     // report below - the two used to overlap once the numbers got wide.
-    if (gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB)
-        sprintf(string, "BFO %+d", gSI4732Bfo);
-    else if (SI4732APP_StepHz() >= 1000)
-        sprintf(string, "STEP %ukHz", SI4732APP_StepHz() / 1000);
+    if (SI4732APP_StepHz() >= 1000)
+        sprintf(string, "%ukHz", SI4732APP_StepHz() / 1000);
     else
-        sprintf(string, "STEP %uHz", SI4732APP_StepHz());
+        sprintf(string, "%uHz", SI4732APP_StepHz());
 
-    UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 4);
+    UI_PrintStringSmallNormal(string, 2, 0, 4);
+
+    // Sensitivity, right hand end of the same line.
+    sprintf(string, "AGC:%s", SI4732APP_AgcName());
+    UI_PrintStringSmallNormal(string, 70, 0, 4);
 
     // Signal report
     UI_PrintStringSmallNormal("SIG", 2, 0, 5);

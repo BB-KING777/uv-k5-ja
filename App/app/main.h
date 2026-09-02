@@ -19,6 +19,10 @@
 
 #include "driver/keyboard.h"
 
+#ifdef ENABLE_SI4732
+bool MAIN_TuneHz(uint32_t hz);
+#endif
+
 void MAIN_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
 void channelMoveSwitch(void);
 
