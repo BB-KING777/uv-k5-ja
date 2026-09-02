@@ -70,8 +70,6 @@ bool            gSI4732Present;
 
 static uint8_t gPollDivider;
 
-static void scope_step(void);
-
 static uint8_t step_index_for(uint32_t step_hz)
 {
     // Match the table value exactly. An earlier "* 10" fallback matched a
@@ -184,8 +182,6 @@ void SI4732APP_Init(void)
 
 void SI4732APP_Stop(void)
 {
-    gSI4732Scope = false;
-
     if (gSI4732Present)
         SI4732_PowerDown();
 
@@ -196,11 +192,6 @@ void SI4732APP_Poll(void)
 {
     if (!gSI4732Present)
         return;
-
-    if (gSI4732Scope) {
-        scope_step();
-        return;
-    }
 
     // The RSQ read is a two transaction I2C round trip, so it runs at about
     // 5 Hz rather than on every 20 ms display tick.
@@ -297,141 +288,10 @@ static void si4732_apply_entry(void)
     si4732_apply();
 }
 
-// ------------------------------------------------------------------- scope
-//
-// A band scope, not a real time spectrum. AM_TUNE_FREQ needs 80 ms to settle
-// properly; the FAST bit skips that at the cost of an unsettled reading, which
-// is all a "where are the carriers" display needs. One bin is sampled per
-// 10 ms tick, so a sweep is well under a second.
-
-static const uint16_t kSpansKhz[] = { 64, 128, 320, 640 };
-
-bool     gSI4732Scope;
-uint8_t  gSI4732ScopeSpan;
-uint8_t  gSI4732ScopeBin[SI4732_SCOPE_BINS];
-uint32_t gSI4732ScopeCenter;
-
-static uint8_t gScopeIndex;
-
-uint32_t SI4732APP_ScopeSpanHz(void)
-{
-    return (uint32_t)kSpansKhz[gSI4732ScopeSpan] * 1000u;
-}
-
-static uint32_t scope_bin_hz(uint8_t bin)
-{
-    const uint32_t span = SI4732APP_ScopeSpanHz();
-    const uint32_t step = span / SI4732_SCOPE_BINS;
-
-    return gSI4732ScopeCenter - (span / 2) + (uint32_t)bin * step;
-}
-
-static void scope_enter(void)
-{
-    gSI4732Scope       = true;
-    gSI4732ScopeCenter = gSI4732Frequency;
-    gScopeIndex        = 0;
-
-    memset(gSI4732ScopeBin, 0, sizeof(gSI4732ScopeBin));
-}
-
-static void scope_exit(void)
-{
-    gSI4732Scope = false;
-    si4732_apply();          // put the receiver back where the dial says
-}
-
-static void scope_step(void)
-{
-    const SI4732_Band_t *band = &gSI4732Bands[gSI4732Band];
-    const uint32_t       hz   = scope_bin_hz(gScopeIndex);
-
-    if (hz >= band->low_hz && hz <= band->high_hz &&
-        SI4732_TuneFast(gSI4732Mode, hz)) {
-        SI4732_Status_t status;
-
-        SI4732_GetStatus(gSI4732Mode, &status);
-        gSI4732ScopeBin[gScopeIndex] = status.rssi;
-    } else {
-        gSI4732ScopeBin[gScopeIndex] = 0;
-    }
-
-    if (++gScopeIndex >= SI4732_SCOPE_BINS) {
-        gScopeIndex    = 0;
-        gUpdateDisplay = true;
-    }
-}
-
-static void scope_tune_peak(void)
-{
-    uint8_t best = 0;
-
-    for (uint8_t i = 1; i < SI4732_SCOPE_BINS; i++)
-        if (gSI4732ScopeBin[i] > gSI4732ScopeBin[best])
-            best = i;
-
-    gSI4732Frequency = scope_bin_hz(best);
-    scope_exit();
-}
-
-static void scope_keys(KEY_Code_t Key)
-{
-    const uint32_t span = SI4732APP_ScopeSpanHz();
-
-    switch (Key) {
-        case KEY_UP:
-            gSI4732ScopeCenter += span / 4;
-            break;
-
-        case KEY_DOWN:
-            if (gSI4732ScopeCenter > span / 4)
-                gSI4732ScopeCenter -= span / 4;
-            break;
-
-        case KEY_STAR:
-            if (++gSI4732ScopeSpan >= ARRAY_SIZE(kSpansKhz))
-                gSI4732ScopeSpan = 0;
-            break;
-
-        case KEY_MENU:
-            scope_tune_peak();
-            break;
-
-        case KEY_EXIT:
-        case KEY_F:
-            scope_exit();
-            break;
-
-        default:
-            return;
-    }
-
-    gScopeIndex = 0;
-    memset(gSI4732ScopeBin, 0, sizeof(gSI4732ScopeBin));
-    gUpdateDisplay = true;
-}
-
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    // Long press on * toggles the scope. Acted on at release so a held key
-    // does not fire over and over.
-    if (!bKeyPressed && bKeyHeld && Key == KEY_STAR && gSI4732Present) {
-        if (gSI4732Scope)
-            scope_exit();
-        else
-            scope_enter();
-
-        gUpdateDisplay = true;
-        return;
-    }
-
     if (!bKeyPressed || bKeyHeld)
         return;
-
-    if (gSI4732Scope) {
-        scope_keys(Key);
-        return;
-    }
 
     if (Key <= KEY_9) {  // KEY_0 is 0, so the digits are the low end of the enum
         if (gEntryLen < SI4732_ENTRY_MAX) {

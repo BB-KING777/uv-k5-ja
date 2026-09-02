@@ -76,7 +76,6 @@ bool SI4732_PowerUp(SI4732_Mode_t mode);
 void SI4732_PowerDown(void);
 void SI4732_SetProperty(uint16_t property, uint16_t value);
 bool SI4732_Tune(SI4732_Mode_t mode, uint32_t freq_hz);
-bool SI4732_TuneFast(SI4732_Mode_t mode, uint32_t freq_hz);
 void SI4732_GetStatus(SI4732_Mode_t mode, SI4732_Status_t *status);
 void SI4732_SetVolume(uint8_t volume);
 void SI4732_SetMute(bool mute);
