@@ -23,6 +23,7 @@
 #endif
 
 #include "audio.h"
+#include "driver/st7565.h"
 #include "board.h"
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     #include "app/rxtx_log.h"
@@ -215,8 +216,15 @@ void Main(void)
 #ifdef ENABLE_FEAT_F4HWN
         // POWER_ON_DISPLAY_MODE_SOUND asks for a start-up sound and until now
         // there was none - it only suppressed the screen.
-        if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE)
+        if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE) {
             AUDIO_PlayBootChime();
+
+            // Playing a tone runs the BK4819 in transmit, which shares SPI
+            // with the display. Put the boot screen back afterwards rather
+            // than trusting it survived.
+            ST7565_BlitStatusLine();
+            ST7565_BlitFullScreen();
+        }
 #endif
 
 #ifdef ENABLE_FEAT_F4HWN
