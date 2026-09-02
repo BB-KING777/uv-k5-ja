@@ -224,6 +224,36 @@ void SI4732_PowerDown(void)
 
 // --------------------------------------------------------------------- tune
 
+// AN332, AM_TUNE_FREQ: "In SW mode, ANTCAPH needs to be set to 0 and ANTCAPL
+// needs to be set to 1." Only LW and MW want the automatic 0x0000.
+static uint16_t antcap_for(uint32_t freq_hz)
+{
+    return (freq_hz > 1800000u) ? 1u : 0u;
+}
+
+// FAST tuning, supported on the Si4732 per AN332. Skips the 80 ms settle that
+// a normal AM_TUNE_FREQ needs, at the cost of an "invalidated" tune status -
+// fine for sweeping a band to see where the carriers are.
+bool SI4732_TuneFast(SI4732_Mode_t mode, uint32_t freq_hz)
+{
+    if (mode == SI4732_MODE_FM)
+        return SI4732_Tune(mode, freq_hz);
+
+    if (!gPoweredUp && !SI4732_PowerUp(mode))
+        return false;
+
+    const uint16_t khz = (uint16_t)(freq_hz / 1000);
+    const uint16_t cap = antcap_for(freq_hz);
+
+    const uint8_t cmd[6] = {
+        SI4732_CMD_AM_TUNE_FREQ, 0x01,
+        (uint8_t)(khz >> 8), (uint8_t)khz,
+        (uint8_t)(cap >> 8), (uint8_t)cap,
+    };
+
+    return si4732_command(cmd, sizeof(cmd));
+}
+
 bool SI4732_Tune(SI4732_Mode_t mode, uint32_t freq_hz)
 {
     uint8_t cmd[6];
@@ -246,12 +276,14 @@ bool SI4732_Tune(SI4732_Mode_t mode, uint32_t freq_hz)
     } else {
         const uint16_t khz = (uint16_t)(freq_hz / 1000);
 
+        const uint16_t cap = antcap_for(freq_hz);
+
         cmd[0] = SI4732_CMD_AM_TUNE_FREQ;
         cmd[1] = 0x00;
         cmd[2] = (uint8_t)(khz >> 8);
         cmd[3] = (uint8_t)khz;
-        cmd[4] = 0x00;
-        cmd[5] = 0x00;  // auto antenna cap
+        cmd[4] = (uint8_t)(cap >> 8);
+        cmd[5] = (uint8_t)cap;
         length = 6;
     }
 

@@ -34,6 +34,54 @@ static void draw_signal_bar(uint8_t line)
         gFrameBuffer[line][SI4732_BAR_X + x] = (x < filled) ? 0x7E : 0x42;
 }
 
+// Band scope: 64 bins, two pixels wide, drawn upwards from the bottom of the
+// plot area. Lines 1 to 5 give 40 pixels of height for a 0..64 dBuV reading.
+#define SCOPE_TOP_LINE  1
+#define SCOPE_LINES     5
+#define SCOPE_HEIGHT    (SCOPE_LINES * 8)
+
+static void draw_scope(void)
+{
+    char string[24];
+
+    sprintf(string, "%u.%03u", gSI4732ScopeCenter / 1000000,
+            (gSI4732ScopeCenter % 1000000) / 1000);
+    UI_PrintStringSmallNormal(string, 2, 0, 0);
+
+    sprintf(string, "SPAN %ukHz", SI4732APP_ScopeSpanHz() / 1000);
+    UI_PrintStringSmallNormal(string, 50, LCD_WIDTH, 0);
+
+    for (uint8_t bin = 0; bin < SI4732_SCOPE_BINS; bin++) {
+        uint8_t level = gSI4732ScopeBin[bin];
+
+        if (level > 64)
+            level = 64;
+
+        const uint8_t height = (uint8_t)(((uint16_t)level * SCOPE_HEIGHT) / 64);
+
+        for (uint8_t row = 0; row < SCOPE_LINES; row++) {
+            // Row 0 is the top of the plot, so it fills last.
+            const uint8_t from_bottom = (uint8_t)((SCOPE_LINES - 1 - row) * 8);
+            uint8_t       column      = 0;
+
+            for (uint8_t bit = 0; bit < 8; bit++)
+                if (height > from_bottom + (7 - bit))
+                    column |= (uint8_t)(1u << bit);
+
+            gFrameBuffer[SCOPE_TOP_LINE + row][bin * 2]     = column;
+            gFrameBuffer[SCOPE_TOP_LINE + row][bin * 2 + 1] = column;
+        }
+    }
+
+    // Centre marker on its own line, under the plot, so a tall bar cannot
+    // swallow it.
+    gFrameBuffer[SCOPE_TOP_LINE + SCOPE_LINES][LCD_WIDTH / 2 - 1] = 0x03;
+    gFrameBuffer[SCOPE_TOP_LINE + SCOPE_LINES][LCD_WIDTH / 2]     = 0x07;
+    gFrameBuffer[SCOPE_TOP_LINE + SCOPE_LINES][LCD_WIDTH / 2 + 1] = 0x03;
+
+    UI_PrintStringSmallNormal("MENU=最大へ  *=幅", 0, LCD_WIDTH, 7);
+}
+
 void UI_DisplaySI4732(void)
 {
     char string[24];
@@ -44,6 +92,12 @@ void UI_DisplaySI4732(void)
         UI_PrintString("SI4732", 0, LCD_WIDTH, 1, 8);
         UI_PrintStringSmallNormal("モジュールが", 0, LCD_WIDTH, 4);
         UI_PrintStringSmallNormal("見つかりません", 0, LCD_WIDTH, 5);
+        ST7565_BlitFullScreen();
+        return;
+    }
+
+    if (gSI4732Scope) {
+        draw_scope();
         ST7565_BlitFullScreen();
         return;
     }
