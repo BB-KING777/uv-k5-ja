@@ -39,8 +39,10 @@ extern bool            gSI4732Present;
 void SI4732APP_Init(void);
 void SI4732APP_Stop(void);
 void SI4732APP_Poll(void);
+void SI4732APP_HoldAudio(void);
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
 
+const char *SI4732APP_EntryText(void);
 const char *SI4732APP_ModeName(void);
 const char *SI4732APP_BandwidthName(void);
 uint32_t    SI4732APP_StepHz(void);

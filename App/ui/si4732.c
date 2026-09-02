@@ -55,6 +55,18 @@ void UI_DisplaySI4732(void)
     sprintf(string, "%s %s", SI4732APP_ModeName(), SI4732APP_BandwidthName());
     UI_PrintStringSmallNormal(string, 46, LCD_WIDTH, 0);
 
+    // A frequency being keyed in takes over the big line until it is applied.
+    const char *entry = SI4732APP_EntryText();
+
+    if (entry) {
+        sprintf(string, "%s_", entry);
+        UI_PrintString(string, 0, LCD_WIDTH, 2, 8);
+        UI_PrintStringSmallNormal("kHz  MENU=決定", 0, LCD_WIDTH, 4);
+        UI_PrintStringSmallNormal("EXIT=1桁消す", 0, LCD_WIDTH, 5);
+        ST7565_BlitFullScreen();
+        return;
+    }
+
     // Frequency. Broadcast bands read in kHz, FM in MHz.
     if (gSI4732Mode == SI4732_MODE_FM) {
         sprintf(string, "%u.%02u", gSI4732Frequency / 1000000,

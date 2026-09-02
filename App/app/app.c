@@ -274,11 +274,6 @@ static bool ScreenSaverCanDisplay(void)
         return true;
 
 #ifdef ENABLE_FMRADIO
-#ifdef ENABLE_SI4732
-    if (gScreenToDisplay == DISPLAY_SI4732)
-        SI4732APP_Poll();
-#endif
-
     if (gScreenToDisplay == DISPLAY_FM)
         return true;
 #endif
@@ -1316,6 +1311,9 @@ void APP_Update(void)
 #ifdef ENABLE_FMRADIO
         && !gFmRadioMode
 #endif
+#ifdef ENABLE_SI4732
+        && gScreenToDisplay != DISPLAY_SI4732
+#endif
 #ifdef ENABLE_DTMF_CALLING
         && gDTMF_CallState == DTMF_CALL_STATE_NONE
 #endif
@@ -1619,6 +1617,16 @@ void APP_TimeSlice10ms(void)
 #endif
 
     BACKLIGHT_Update();
+
+#ifdef ENABLE_SI4732
+    // The Si4732 owns the speaker while its screen is up, so this has to run
+    // on every tick - it used to sit inside the screen saver check, behind
+    // ENABLE_FMRADIO, and so never ran in a build without the FM radio.
+    if (gScreenToDisplay == DISPLAY_SI4732) {
+        SI4732APP_HoldAudio();
+        SI4732APP_Poll();
+    }
+#endif
 
     gFlashLightBlinkCounter++;
 

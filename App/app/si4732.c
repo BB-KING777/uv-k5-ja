@@ -45,6 +45,9 @@ const SI4732_Band_t gSI4732Bands[] = {
     { "11m", 25670000,  26100000,  25800000, 5000, SI4732_MODE_AM  },
     { "10m", 28000000,  29700000,  28500000, 1000, SI4732_MODE_USB },
     { "FM",  76000000, 108000000,  80000000,  100, SI4732_MODE_FM  },
+    // Catch all, last on purpose: keyed in frequencies that fall outside every
+    // named band land here so the radio still tunes them.
+    { "SW",    150000,  30000000,   6055000, 5000, SI4732_MODE_AM  },
 };
 
 const uint8_t gSI4732BandCount = ARRAY_SIZE(gSI4732Bands);
@@ -70,8 +73,10 @@ static uint8_t gPollDivider;
 
 static uint8_t step_index_for(uint32_t step_hz)
 {
+    // Match the table value exactly. An earlier "* 10" fallback matched a
+    // tenth sized step first, so a 5 kHz broadcast band came up on 500 Hz.
     for (uint8_t i = 0; i < ARRAY_SIZE(kSteps); i++)
-        if ((uint32_t)kSteps[i] * 10u == step_hz || kSteps[i] == step_hz)
+        if (kSteps[i] == step_hz)
             return i;
 
     return 2;
@@ -95,6 +100,32 @@ const char *SI4732APP_BandwidthName(void)
     return kBandwidthNames[gSI4732Bandwidth < ARRAY_SIZE(kBandwidthNames) ? gSI4732Bandwidth : 0];
 }
 
+// Direct frequency entry, in kHz. Six digits covers 150 kHz through the top
+// of the FM band, so the buffer auto applies once it is full.
+#define SI4732_ENTRY_MAX 6
+
+static char    gEntry[SI4732_ENTRY_MAX + 1];
+static uint8_t gEntryLen;
+
+const char *SI4732APP_EntryText(void)
+{
+    return gEntryLen ? gEntry : 0;
+}
+
+static uint8_t band_all(void)
+{
+    return (uint8_t)(gSI4732BandCount - 1);
+}
+
+static uint8_t band_for(uint32_t hz)
+{
+    for (uint8_t i = 0; i < band_all(); i++)
+        if (hz >= gSI4732Bands[i].low_hz && hz <= gSI4732Bands[i].high_hz)
+            return i;
+
+    return band_all();
+}
+
 static void si4732_apply(void)
 {
     SI4732_Tune(gSI4732Mode, gSI4732Frequency);
@@ -115,6 +146,12 @@ static void si4732_select_band(uint8_t band)
     gSI4732StepIndex = step_index_for(gSI4732Bands[band].step_hz);
     gSI4732Bfo       = 0;
 
+    // Powering the chip up into SSB without the patch in flash leaves it dead,
+    // which used to silence every band from 160 m upwards.
+    if ((gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB) &&
+        !SI4732_PatchAvailable())
+        gSI4732Mode = SI4732_MODE_AM;
+
     si4732_apply();
 }
 
@@ -127,6 +164,9 @@ void SI4732APP_Init(void)
 #endif
 
     BK4819_SetAF(BK4819_AF_MUTE);
+
+    gEntryLen = 0;
+    gEntry[0] = 0;
 
     gSI4732Present = SI4732_Detect();
 
@@ -163,6 +203,19 @@ void SI4732APP_Poll(void)
 
     SI4732_GetStatus(gSI4732Mode, &gSI4732Status);
     gUpdateDisplay = true;
+}
+
+// The transceiver side closes the audio path whenever its own squelch says so,
+// which is why this screen used to need monitor mode held down. Nothing on the
+// BK4829 side is being listened to here, so take the path back.
+void SI4732APP_HoldAudio(void)
+{
+    if (!gSI4732Present || gEnableSpeaker)
+        return;
+
+    BK4819_SetAF(BK4819_AF_MUTE);
+    AUDIO_AudioPathOn();
+    gEnableSpeaker = true;
 }
 
 static void si4732_tune_by(int8_t direction)
@@ -205,10 +258,54 @@ static void si4732_cycle_mode(void)
     si4732_apply();
 }
 
+static void si4732_apply_entry(void)
+{
+    uint32_t khz = 0;
+
+    for (uint8_t i = 0; i < gEntryLen; i++)
+        khz = khz * 10u + (uint32_t)(gEntry[i] - '0');
+
+    gEntryLen = 0;
+    gEntry[0] = 0;
+
+    const uint32_t hz   = khz * 1000u;
+    const uint8_t  band = band_for(hz);
+
+    if (band == band_all() &&
+        (hz < gSI4732Bands[band].low_hz || hz > gSI4732Bands[band].high_hz))
+        return;  // outside everything the chip can tune, leave the dial alone
+
+    gSI4732Band      = band;
+    gSI4732Mode      = gSI4732Bands[band].mode;
+    gSI4732StepIndex = step_index_for(gSI4732Bands[band].step_hz);
+    gSI4732Bfo       = 0;
+
+    if ((gSI4732Mode == SI4732_MODE_LSB || gSI4732Mode == SI4732_MODE_USB) &&
+        !SI4732_PatchAvailable())
+        gSI4732Mode = SI4732_MODE_AM;
+
+    gSI4732Frequency = hz;
+
+    si4732_apply();
+}
+
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (!bKeyPressed || bKeyHeld)
         return;
+
+    if (Key <= KEY_9) {  // KEY_0 is 0, so the digits are the low end of the enum
+        if (gEntryLen < SI4732_ENTRY_MAX) {
+            gEntry[gEntryLen++] = (char)('0' + (Key - KEY_0));
+            gEntry[gEntryLen]   = 0;
+        }
+
+        if (gEntryLen == SI4732_ENTRY_MAX)
+            si4732_apply_entry();
+
+        gUpdateDisplay = true;
+        return;
+    }
 
     switch (Key) {
         case KEY_UP:
@@ -219,19 +316,14 @@ void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             si4732_tune_by(-1);
             break;
 
-        case KEY_1:
-            si4732_select_band((uint8_t)(gSI4732Band + 1) % gSI4732BandCount);
+        case KEY_MENU:
+            if (gEntryLen)
+                si4732_apply_entry();
+            else
+                si4732_cycle_mode();
             break;
 
-        case KEY_7:
-            si4732_select_band((uint8_t)(gSI4732Band + gSI4732BandCount - 1) % gSI4732BandCount);
-            break;
-
-        case KEY_2:
-            si4732_cycle_mode();
-            break;
-
-        case KEY_3:
+        case KEY_F:
             if (++gSI4732Bandwidth >= ARRAY_SIZE(kBandwidthNames))
                 gSI4732Bandwidth = 0;
             SI4732_SetBandwidth(gSI4732Mode, gSI4732Bandwidth);
@@ -242,17 +334,11 @@ void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                 gSI4732StepIndex = 0;
             break;
 
-        case KEY_4:
-            gSI4732Bfo -= 50;
-            SI4732_SetBfo(gSI4732Bfo);
-            break;
-
-        case KEY_6:
-            gSI4732Bfo += 50;
-            SI4732_SetBfo(gSI4732Bfo);
-            break;
-
         case KEY_EXIT:
+            if (gEntryLen) {  // backspace out of a half typed frequency
+                gEntry[--gEntryLen] = 0;
+                break;
+            }
             SI4732APP_Stop();
             gRequestDisplayScreen = DISPLAY_MAIN;
             return;
