@@ -94,6 +94,30 @@ int main(int argc, char **argv)
     UI_PrintStringSmallNormalInverse("反転表示 OK", 2, 0, 6);
     dump("screen_glyphs", scale);
 
+    // 5. the Si4732 receive screen, laid out with the same calls ui/si4732.c
+    //    makes, so the README screenshot matches what the radio draws
+    clear();
+    UI_PrintStringSmallNormal("49m", 2, 0, 0);
+    UI_PrintStringSmallNormal("AM 4.0k", 46, 128, 0);
+    UI_PrintStringSmallNormal("80 01 01 00 2A 12", 0, 128, 1);
+    UI_PrintString("6.055", 0, 128, 2, 8);
+    UI_PrintStringSmallNormal("5kHz", 2, 0, 4);
+    UI_PrintStringSmallNormal("AGC:DX", 70, 0, 4);
+    UI_PrintStringSmallNormal("SIG", 2, 0, 5);
+    for (unsigned int x = 0; x < 60; x++)
+        gFrameBuffer[5][44 + x] = (x < 39) ? 0x7E : 0x42;
+    UI_PrintStringSmallNormal("42dBuV  S/N 18", 0, 128, 6);
+    dump("screen_si4732", scale);
+
+    // 6. direct frequency entry
+    clear();
+    UI_PrintStringSmallNormal("49m", 2, 0, 0);
+    UI_PrintStringSmallNormal("AM 4.0k", 46, 128, 0);
+    UI_PrintString("9595_", 0, 128, 2, 8);
+    UI_PrintStringSmallNormal("kHz  MENU=決定", 0, 128, 4);
+    UI_PrintStringSmallNormal("EXIT=1桁消す", 0, 128, 5);
+    dump("screen_si4732_entry", scale);
+
     (void)argc; (void)argv;
     return 0;
 }

@@ -1,15 +1,20 @@
-# JA-K5
+<p align="center">
+  <img src="images/ja-k5/logo.png" alt="JA-K5" width="340">
+</p>
 
-Quansheng UV-K5(8) V3 / UV-K1 を日本語で使うためのファームウェア。
+<p align="center">
+  <b>Quansheng UV-K5(8) V3 / UV-K1 を日本語で使うためのファームウェア</b>
+</p>
+
 [F4HWN Edition Fusion](https://github.com/armel/uv-k1-k5v3-firmware-custom) v5.9.0 を土台に、
 UI の日本語化と、SI4732 を載せた機体での短波受信を足しました。
-
-![起動画面と本体情報画面](images/ja-k5/boot.png)
 
 もともとは「メニューが英語で操作が覚えられない」という個人的な不満から始めたものです。
 そのうち BK1080 を剥がして SI4732 を載せる改造に手を出し、短波が聞けるようになり、
 ついでに BK4829 のレジスタを実機から吸い出して Beken のデータシートを検証する、
 というところまで来ました。
+
+![起動画面](images/ja-k5/boot.png)
 
 > [!CAUTION]
 > **この無線機は日本では送信できません。** 技適を受けていないため、送信すると電波法違反です。
@@ -59,7 +64,7 @@ K5(8) では周波数の増減が逆になり、しかも直すための `SetNav
 
 ## 短波受信
 
-![SI4732 受信画面](images/ja-k5/si4732.png)
+![SI4732 受信画面と周波数入力](images/ja-k5/si4732.png)
 
 BK1080 のフットプリントに SI4732-A10 モジュールを載せた機体で、LW / MW / SW と
 FM 放送を受信します。IOTCU V9.1B 改造基板で動作確認済みです。

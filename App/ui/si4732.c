@@ -111,11 +111,12 @@ void UI_DisplaySI4732(void)
     UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 6);
 
     // Diagnostic: the raw RSQ response, so a stuck reading can be traced back
-    // to the chip rather than guessed at.
+    // to the chip rather than guessed at. Line 1, because gFrameBuffer only
+    // has seven lines and this used to be written to line 7.
     sprintf(string, "%02X %02X %02X %02X %02X %02X",
             gSI4732Status.raw[0], gSI4732Status.raw[1], gSI4732Status.raw[2],
             gSI4732Status.raw[3], gSI4732Status.raw[4], gSI4732Status.raw[5]);
-    UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 7);
+    UI_PrintStringSmallNormal(string, 0, LCD_WIDTH, 1);
 
     ST7565_BlitFullScreen();
 }
