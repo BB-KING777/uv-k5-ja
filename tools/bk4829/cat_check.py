@@ -18,6 +18,11 @@ import time
 import serial
 from serial.tools import list_ports
 
+def say(*args):
+    """Print and flush, so a hang is visible at the line it happened on."""
+    print(*args, flush=True)
+
+
 OBFUSCATION = bytes([0x16, 0x6C, 0x14, 0xE6, 0x2E, 0x91, 0x0D, 0x40,
                      0x21, 0x35, 0xD5, 0x40, 0x13, 0x03, 0xE9, 0x80])
 
@@ -64,29 +69,47 @@ def describe(ids):
 
 
 def attempt(port_name, dtr, rts):
-    print(f"\n--- DTR={int(dtr)} RTS={int(rts)} ---")
+    if dtr is None:
+        say("\n--- 素で開く（信号線を触らない）---")
+    else:
+        say(f"\n--- DTR={int(dtr)} RTS={int(rts)} ---")
+
+    say("  ポートを開いています ...")
     try:
         port = serial.Serial(port_name, 38400, timeout=0.2)
     except Exception as exc:                 # noqa: BLE001
-        print(f"  開けません: {exc}")
+        say(f"  開けません: {exc}")
+        say("  → UV Studio を開いた Chrome のタブが残っていませんか。"
+            "WebSerial はポートを排他的に掴みます。")
         return
 
     with port:
-        port.dtr = dtr
-        port.rts = rts
+        say("  開けました")
+
+        # Setting these calls EscapeCommFunction on Windows, which has been
+        # seen to block on this CDC device. Never let it take the run down.
+        if dtr is not None:
+            for name, value in (("dtr", dtr), ("rts", rts)):
+                try:
+                    setattr(port, name, value)
+                except Exception as exc:     # noqa: BLE001
+                    say(f"  {name} を {int(value)} にできません: {exc}")
+
         time.sleep(0.2)
         port.reset_input_buffer()
 
+        say("  無送信で 1 秒聞きます ...")
         quiet = b""
         deadline = time.time() + 1.0
         while time.time() < deadline:
             quiet += port.read(256)
-        print(f"  無送信で 1 秒: {len(quiet):4d} バイト  {describe(reply_ids(quiet))}")
+        say(f"  無送信で 1 秒: {len(quiet):4d} バイト  {describe(reply_ids(quiet))}")
         if quiet:
-            print(f"    {quiet[:48].hex(' ')}")
+            say(f"    {quiet[:48].hex(' ')}")
 
         payload = (0x0514).to_bytes(2, "little") + (4).to_bytes(2, "little") + \
                   (0x12345678).to_bytes(4, "little")
+        say("  0x0514 を送ります ...")
         port.reset_input_buffer()
         port.write(frame(payload))
         port.flush()
@@ -95,31 +118,35 @@ def attempt(port_name, dtr, rts):
         deadline = time.time() + 1.2
         while time.time() < deadline:
             answer += port.read(256)
-        print(f"  0x0514 送信後 : {len(answer):4d} バイト  {describe(reply_ids(answer))}")
+        say(f"  0x0514 送信後 : {len(answer):4d} バイト  {describe(reply_ids(answer))}")
         if answer:
-            print(f"    {answer[:48].hex(' ')}")
+            say(f"    {answer[:48].hex(' ')}")
 
 
 def main():
     if len(sys.argv) < 2:
-        print("使い方: python cat_check.py <ポート>\n")
-        print("見えているポート:")
+        say("使い方: python cat_check.py <ポート>\n")
+        say("見えているポート:")
         for p in list_ports.comports():
-            print(f"  {p.device}  {p.description}")
+            say(f"  {p.device}  {p.description}")
         return 1
 
     name = sys.argv[1]
-    print(f"{name} を調べます。無線機は PTT を押さずに、通常起動させてください。")
+    say(f"{name} を調べます。無線機は PTT を押さずに、通常起動させてください。")
+    say("UV Studio を開いた Chrome のタブは閉じておいてください"
+        "（WebSerial がポートを掴んだままになります）。")
+
+    attempt(name, None, None)          # exactly what dump_regs.py does
 
     for dtr in (True, False):
         for rts in (True, False):
             attempt(name, dtr, rts)
 
-    print("\n読み方")
-    print("  0x0515 が返る          -> アプリの CAT は生きている")
-    print("  0x0518 だけ出続ける    -> ブートローダモード。PTT を押さずに起動し直す")
-    print("  どの条件でも 0 バイト  -> 送信経路かエンドポイントの問題")
-    print("  バイトは来るがフレーム無し -> 難読化か CRC の食い違い")
+    say("\n読み方")
+    say("  0x0515 が返る          -> アプリの CAT は生きている")
+    say("  0x0518 だけ出続ける    -> ブートローダモード。PTT を押さずに起動し直す")
+    say("  どの条件でも 0 バイト  -> 送信経路かエンドポイントの問題")
+    say("  バイトは来るがフレーム無し -> 難読化か CRC の食い違い")
     return 0
 
 
