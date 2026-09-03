@@ -173,6 +173,8 @@ def hello(port, debug=False):
 
     if debug and buffer:
         print(f"   [debug] 受信 {len(buffer)} バイト: {buffer[:64].hex(' ')}")
+    elif debug:
+        print("   [debug] 受信ゼロ（1バイトも返ってきていません）")
 
     return None, None
 
