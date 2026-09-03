@@ -58,7 +58,7 @@ RF LOG を失います。改造していないなら stock 版です。
 
 描画は `UI_PrintString` 系を UTF-8 対応にしただけなので、ASCII の描画結果は
 上流と 1 ドットも変わりません（`ENABLE_LANG_JA=OFF` でビルドするとバイナリが
-ほぼ一致することを確認しています）。実装の詳細は [README_JA.md](README_JA.md) に。
+ほぼ一致することを確認しています）。
 
 上下キーの向きも UV-K5(8) 向けに固定してあります。上流は初期値が UV-K1 向けなので
 K5(8) では周波数の増減が逆になり、しかも直すための `SetNav` は隠しメニューにあって、
@@ -233,7 +233,7 @@ CHIRP を使う場合は、上流のリリースに同梱されている v5.9.0 
 - [armel / F4HWN](https://github.com/armel/uv-k5-firmware-custom) — F4HWN Edition
 - [armel / F4HWN と muzkr](https://github.com/armel/uv-k1-k5v3-firmware-custom) — PY32F071 への移植。このリポジトリの直接の派生元
 
-上流の README は [README_F4HWN.md](README_F4HWN.md) にそのまま残してあります。
+上流の README は [armel 氏のリポジトリ](https://github.com/armel/uv-k1-k5v3-firmware-custom#readme) にあります。
 本体の「本体情報」画面には派生元のバージョン（`F4HWN 5.9.0`）が出ます。
 
 ## ライセンス
