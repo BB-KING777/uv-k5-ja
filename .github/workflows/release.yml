@@ -30,6 +30,9 @@ jobs:
             cmake ninja-build
           arm-none-eabi-gcc --version | head -1
 
+      - name: Replay the Si4732 key handling on the host
+        run: tools/si4732_keytest/run.sh
+
       - name: Build SI4732Ja (short wave, for a modified radio)
         run: |
           cmake --preset SI4732Ja

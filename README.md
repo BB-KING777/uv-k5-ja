@@ -172,6 +172,17 @@ cmake --preset CustomJa  && cmake --build build/CustomJa  # 軽量版
 `arm-none-eabi-gcc` と `cmake`、`ninja` が必要です。上流同梱の `./compile-with-docker.sh` も使えます。
 タグを打つと GitHub Actions が両方ビルドして Release に添付します。
 
+短波画面のキー操作は、実機に焼かなくても確認できます。
+
+```sh
+tools/si4732_keytest/run.sh   # キーイベントを再生して動作を検証
+tools/lang_ja/sim/render.sh   # 画面をPNGに書き出す
+```
+
+前者は `App/app/si4732.c` をホスト向けにコンパイルして、無線機のキー状態機械が出すのと
+同じ順序でイベントを流し込みます。長押しが短押しの動作まで実行してしまうバグを踏んだので
+書いたものです。CI でも走らせています。
+
 `SI4732Ja` は `FusionJa` に短波受信とレジスタ表示を足し、その分の容量を作るために
 Fox Hunt と RF LOG を落とした構成です。
 
