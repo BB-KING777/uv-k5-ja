@@ -157,9 +157,39 @@ def ping_watch(port_name, times=8):
     return 0
 
 
+def reset_watch(port_name):
+    """0x05DD を送る。届いてパースされれば無線機は即座に再起動する。
+
+    case 0x05DD は NVIC_SystemReset() を呼ぶだけで、タイムスタンプの照合も
+    前提条件も無い。バックライトの設定に左右されないので、受信経路が
+    生きているかを確かめる観測点としてはこちらのほうが確実。
+    """
+    say("0x05DD（リセット）を送ります。無線機を見ていてください。\n")
+
+    try:
+        port = serial.Serial(port_name, 38400, timeout=0.2)
+    except Exception as exc:                 # noqa: BLE001
+        say(f"開けません: {exc}")
+        return 1
+
+    payload = (0x05DD).to_bytes(2, "little") + (0).to_bytes(2, "little")
+
+    with port:
+        for i in range(1, 4):
+            port.write(frame(payload))
+            port.flush()
+            say(f"  {i}/3 送信")
+            time.sleep(2.0)
+
+    say("\n無線機は再起動しましたか。")
+    say("  再起動した   -> 受信経路もパースも CRC も通っている。返信だけの問題")
+    say("  何も起きない -> フレームが無線機に届いていないか、弾かれている")
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
-        say("使い方: python cat_check.py <ポート> [--ping] [--sweep]\n")
+        say("使い方: python cat_check.py <ポート> [--ping] [--reset] [--sweep]\n")
         say("見えているポート:")
         for p in list_ports.comports():
             say(f"  {p.device}  {p.description}")
@@ -169,6 +199,9 @@ def main():
 
     if "--ping" in sys.argv:
         return ping_watch(name)
+
+    if "--reset" in sys.argv:
+        return reset_watch(name)
 
     say(f"{name} を調べます。無線機は PTT を押さずに、通常起動させてください。")
     say("UV Studio を開いた Chrome のタブは閉じておいてください"
