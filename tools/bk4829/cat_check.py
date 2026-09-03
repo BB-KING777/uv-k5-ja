@@ -123,24 +123,69 @@ def attempt(port_name, dtr, rts):
             say(f"    {answer[:48].hex(' ')}")
 
 
+def ping_watch(port_name, times=8):
+    """0x0514 を繰り返し送る。返信を待たずに、無線機を目で見るためのモード。
+
+    CMD_0514 は返信を送る前にバックライトを消し、PTT を 6 秒無効にする。
+    コマンドが届いてパースされたかどうかは、そこで分かる。
+    """
+    say("バックライトが『常時点灯』以外に設定されていることを確認してください。")
+    say("キーを押してバックライトを点けてから、下の送信を見ていてください。\n")
+
+    try:
+        port = serial.Serial(port_name, 38400, timeout=0.2)
+    except Exception as exc:                 # noqa: BLE001
+        say(f"開けません: {exc}")
+        return 1
+
+    payload = (0x0514).to_bytes(2, "little") + (4).to_bytes(2, "little") + \
+              (0x12345678).to_bytes(4, "little")
+
+    with port:
+        for i in range(1, times + 1):
+            port.reset_input_buffer()
+            port.write(frame(payload))
+            port.flush()
+            time.sleep(0.4)
+            got = port.read(256)
+            say(f"  {i}/{times} 送信  受信 {len(got)} バイト  {describe(reply_ids(got))}")
+            time.sleep(1.1)
+
+    say("\nバックライトは消えましたか。")
+    say("  消えた   -> コマンドは届いてパースされている。返信経路だけの問題")
+    say("  消えない -> コマンドが届いていないか、CRC で弾かれている")
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
-        say("使い方: python cat_check.py <ポート>\n")
+        say("使い方: python cat_check.py <ポート> [--ping] [--sweep]\n")
         say("見えているポート:")
         for p in list_ports.comports():
             say(f"  {p.device}  {p.description}")
         return 1
 
     name = sys.argv[1]
+
+    if "--ping" in sys.argv:
+        return ping_watch(name)
+
     say(f"{name} を調べます。無線機は PTT を押さずに、通常起動させてください。")
     say("UV Studio を開いた Chrome のタブは閉じておいてください"
         "（WebSerial がポートを掴んだままになります）。")
 
     attempt(name, None, None)          # exactly what dump_regs.py does
 
-    for dtr in (True, False):
-        for rts in (True, False):
-            attempt(name, dtr, rts)
+    if "--sweep" not in sys.argv:
+        say("\nDTR / RTS の総当たりは --sweep で。")
+        say("0x0514 が届いているかは --ping で、無線機を見ながら確かめられます。")
+    else:
+        for dtr in (True, False):
+            for rts in (True, False):
+                # Reopening a CDC port straight after closing it blocks on
+                # Windows; give the stack time to let go.
+                time.sleep(1.5)
+                attempt(name, dtr, rts)
 
     say("\n読み方")
     say("  0x0515 が返る          -> アプリの CAT は生きている")
