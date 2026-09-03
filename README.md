@@ -33,6 +33,8 @@ PY32F071 を積んだ **UV-K5(8) V3 と UV-K1 だけ**です。
 書き込む前に [UV Studio](https://armel.github.io/uvstudio/#dump-calib) で
 キャリブレーションデータをバックアップしておいてください。上流と同じく無保証です。
 
+私は[こちら](https://ja.aliexpress.com/item/1005010526288840.html)の販売ページから購入しています。
+
 ## どちらのバイナリを使うか
 
 [Releases](../../releases) に2つ置いてあります。
