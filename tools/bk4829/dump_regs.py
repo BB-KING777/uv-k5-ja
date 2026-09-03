@@ -177,6 +177,10 @@ def hello(port, debug=False):
     return None, None
 
 
+# 0x0601 only exists when the firmware was built with ENABLE_UART_RW_BK_REGS.
+# Without it the command falls off the end of the dispatch switch in
+# UART_HandleCommand() and nothing is sent back, which looks exactly like a
+# dead serial link. The SI4732Ja preset turns it on.
 def read_register(port, reg, debug=False):
     payload = (0x0601).to_bytes(2, "little") + (1).to_bytes(2, "little") + bytes([reg])
     reply = transact(port, payload, 0x0601, debug=debug)

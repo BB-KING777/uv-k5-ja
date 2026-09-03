@@ -261,6 +261,7 @@
             "cacheVariables": {
                 "ENABLE_SI4732": true,
                 "ENABLE_REG_DUMP_SCREEN": true,
+                "ENABLE_UART_RW_BK_REGS": true,
                 "ENABLE_FEAT_F4HWN_FOXHUNT": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
