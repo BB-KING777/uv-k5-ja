@@ -459,47 +459,13 @@ static void si4732_apply_entry(void)
 
 void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
-    // A held up or down key starts a seek, acted on at release so it fires
-    // once. Anything else pressed while seeking just stops it.
-    if (!bKeyPressed && bKeyHeld && !gSI4732Seeking && gSI4732Present) {
-        switch (Key) {
-            case KEY_UP:
-            case KEY_DOWN:
-                seek_start(Key == KEY_UP);
-                return;
-
-            case KEY_STAR:   // band forward
-                si4732_select_band((uint8_t)(gSI4732Band + 1) % gSI4732BandCount);
-                gUpdateDisplay = true;
-                return;
-
-            case KEY_MENU:   // band back
-                si4732_select_band((uint8_t)(gSI4732Band + gSI4732BandCount - 1) %
-                                   gSI4732BandCount);
-                gUpdateDisplay = true;
-                return;
-
-            case KEY_F:      // sensitivity / AGC
-                if (++gSI4732Agc >= ARRAY_SIZE(kAgc))
-                    gSI4732Agc = 0;
-                si4732_apply_agc();
-                gUpdateDisplay = true;
-                return;
-
-            default:
-                break;
-        }
-    }
-
-    if (!bKeyPressed || bKeyHeld)
-        return;
-
-    if (gSI4732Seeking) {
-        seek_stop();
-        return;
-    }
-
-    if (Key <= KEY_9) {  // KEY_0 is 0, so the digits are the low end of the enum
+    // Everything except the digits acts on release, because the key state
+    // machine delivers the initial press before it knows the key is going to
+    // be held: acting on the press meant a long press always performed the
+    // short press action first, so changing the sensitivity also stepped the
+    // bandwidth. Digits stay on the press - typing wants to feel immediate,
+    // and they have no long press of their own.
+    if (bKeyPressed && !bKeyHeld && Key <= KEY_9 && !gSI4732Seeking) {
         if (gEntryLen < SI4732_ENTRY_MAX) {
             gEntry[gEntryLen++] = (char)('0' + (Key - KEY_0));
             gEntry[gEntryLen]   = 0;
@@ -507,6 +473,47 @@ void SI4732APP_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
         if (gEntryLen == SI4732_ENTRY_MAX)
             si4732_apply_entry();
+
+        gUpdateDisplay = true;
+        return;
+    }
+
+    if (bKeyPressed)
+        return;
+
+    if (gSI4732Seeking) {   // any key stops a seek
+        seek_stop();
+        return;
+    }
+
+    if (bKeyHeld) {
+        if (!gSI4732Present)
+            return;
+
+        switch (Key) {
+            case KEY_UP:
+            case KEY_DOWN:
+                seek_start(Key == KEY_UP);
+                break;
+
+            case KEY_STAR:   // band forward
+                si4732_select_band((uint8_t)(gSI4732Band + 1) % gSI4732BandCount);
+                break;
+
+            case KEY_MENU:   // band back
+                si4732_select_band((uint8_t)(gSI4732Band + gSI4732BandCount - 1) %
+                                   gSI4732BandCount);
+                break;
+
+            case KEY_F:      // sensitivity
+                if (++gSI4732Agc >= ARRAY_SIZE(kAgc))
+                    gSI4732Agc = 0;
+                si4732_apply_agc();
+                break;
+
+            default:
+                return;
+        }
 
         gUpdateDisplay = true;
         return;
