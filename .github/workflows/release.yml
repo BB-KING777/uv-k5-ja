@@ -54,7 +54,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          generate_release_notes: true
+          body_path: .github/release-notes.md
 
       - name: Keep the binaries when run by hand
         if: "!startsWith(github.ref, 'refs/tags/')"
