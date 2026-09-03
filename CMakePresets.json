@@ -252,6 +252,21 @@
                 "AUTHOR_STRING_2": "JA-K5",
                 "VERSION_STRING_2": "v1.0"
             }
+        },
+        {
+            "name": "SI4732Ja",
+            "displayName": "Fusion (Japanese UI, SI4732 HF receive)",
+            "inherits": "FusionJa",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "ENABLE_SI4732": true,
+                "ENABLE_REG_DUMP_SCREEN": true,
+                "ENABLE_FEAT_F4HWN_FOXHUNT": false,
+                "ENABLE_FEAT_F4HWN_RXTX_LOG": false,
+                "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
+                "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": false,
+                "TARGET": "ja-k5.si4732"
+            }
         }
     ],
     "buildPresets": [
@@ -286,6 +301,10 @@
         {
             "name": "CustomJa",
             "configurePreset": "CustomJa"
+        },
+        {
+            "name": "SI4732Ja",
+            "configurePreset": "SI4732Ja"
         },
         {
             "name": "FusionJa",
