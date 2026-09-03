@@ -36,7 +36,12 @@
 #define UART_TX_TIMEOUT_ITERATIONS 10000
 
 static bool UART_IsLogEnabled;
-uint8_t UART_DMA_Buffer[256];
+// Word aligned on purpose. The circular DMA writes here, and the buffer landed
+// on an odd address whenever the menu list shrank by one entry - at which point
+// the application stopped answering CAT over USB. VCP_ReplyBuf sits immediately
+// after this buffer in .bss, so an overrun lands squarely on the reply the host
+// is waiting for. Pinning the alignment takes the layout out of the equation.
+uint8_t UART_DMA_Buffer[256] __attribute__((aligned(4)));
 
 void UART_Init(void)
 {

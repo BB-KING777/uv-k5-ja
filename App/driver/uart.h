@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-extern uint8_t UART_DMA_Buffer[256];
+extern uint8_t UART_DMA_Buffer[256] __attribute__((aligned(4)));
 
 void UART_Init(void);
 void UART_Send(const void *pBuffer, uint32_t Size);
